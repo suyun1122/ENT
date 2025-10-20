@@ -251,10 +251,6 @@ curl -X POST http://localhost:8000/add_stream \
                        └──────────────────┘
 ```
 
-## License
-
-[Add your license information here]
-
 ## Support
 
 For issues and questions:
