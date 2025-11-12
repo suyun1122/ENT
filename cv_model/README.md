@@ -1,6 +1,71 @@
+## CV Model Training Module — Customizable Object Detection
+
+This module provides a flexible, reusable computer vision training pipeline for object detection tasks. Originally designed for PPE (Personal Protective Equipment) detection, it can be easily customized for other domains such as **surgical tool detection** or any other object detection task.
+
+### Quick Start: Surgical Tool Detection
+
+To train a model for detecting surgical tools using the Cholec80 dataset:
+
+1. **Set up environment:**
+```bash
+pip install -r requirements.txt
+```
+
+2. **Configure Roboflow API key:**
+Create a `.env` file in the project root:
+```
+ROBOFLOW_API_KEY=your_api_key_here
+```
+
+3. **Run training:**
+```bash
+cd training_scripts
+python train_surgical_tools.py
+```
+
+The script will automatically:
+- Download the Cholec80 dataset (version 3) from Roboflow
+- Train a YOLO11m model optimized for surgical tool detection
+- Save trained weights to `surgical_tool_training_runs/`
+
+4. **Resume training (if interrupted):**
+If training was stopped and you want to continue from the last checkpoint:
+```bash
+cd training_scripts
+python resume_training.py
+```
+
+This will automatically find the latest training run and resume from the last checkpoint.
+
+### Dataset: Cholec80
+
+The Cholec80 dataset is available at: https://universe.roboflow.com/daad-mobility/cholec80/dataset/3
+
+**Download format:** Use `yolov11` format
+
+**Dataset location:** The dataset should be placed in `cv_model/Cholec80.v3-cholec80-10.yolov11/` (or will be auto-downloaded if not found)
+
+**Classes (7 surgical tools):**
+- Bipolar
+- Clipper
+- Grasper
+- Hook
+- Irrigator
+- Scissors
+- Specimen Bag
+
+The dataset contains annotated surgical tool images from cholecystectomy procedures, perfect for training medical instrument detection models.
+
+**Dataset structure:**
+- `train/`: 6,165 images
+- `valid/`: 1,047 images
+- `test/`: 1,049 images
+
+---
+
 ## PPE Detection CV Model — Training Methodology and Results
 
-This module documents how the PPE compliance detector was trained and why it works for analyzing chunks in the `rtsp-stream-worker`.
+This section documents the original PPE compliance detector training methodology.
 
 ### Objective
 Detect missing PPE on workers (e.g., missing hardhat, vest, gloves) within factory and construction environments. Outputs are overlaid during preprocessing so the worker can chunk, upload to NVIDIA VSS, and index richer, annotated video segments.

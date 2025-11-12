@@ -1,0 +1,56 @@
+GPU Available: False
+Using device: cpu
+Training with dataset: /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/data.yaml
+Ultralytics 8.3.227 🚀 Python-3.13.1 torch-2.9.0 CPU (Apple M3 Pro)
+[34m[1mengine/trainer: [0magnostic_nms=False, amp=True, augment=False, auto_augment=randaugment, batch=-1, bgr=0.0, box=7.5, cache=False, cfg=None, classes=None, close_mosaic=10, cls=0.5, compile=False, conf=None, copy_paste=0.1, copy_paste_mode=flip, cos_lr=False, cutmix=0.0, data=/Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/data.yaml, degrees=10.0, deterministic=True, device=cpu, dfl=1.5, dnn=False, dropout=0.0, dynamic=False, embed=None, epochs=100, erasing=0.4, exist_ok=False, fliplr=0.5, flipud=0.0, format=torchscript, fraction=1.0, freeze=None, half=False, hsv_h=0.01, hsv_s=0.5, hsv_v=0.3, imgsz=1280, int8=False, iou=0.7, keras=False, kobj=1.0, line_width=None, lr0=0.01, lrf=0.01, mask_ratio=4, max_det=300, mixup=0.0, mode=train, model=yolo11m.pt, momentum=0.937, mosaic=1.0, multi_scale=False, name=yolo11m_cholec80_run13, nbs=64, nms=False, opset=None, optimize=False, optimizer=auto, overlap_mask=True, patience=20, perspective=0.0, plots=True, pose=12.0, pretrained=True, profile=False, project=surgical_tool_training_runs, rect=False, resume=False, retina_masks=False, save=True, save_conf=False, save_crop=False, save_dir=/Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/training_scripts/surgical_tool_training_runs/yolo11m_cholec80_run13, save_frames=False, save_json=False, save_period=-1, save_txt=False, scale=0.3, seed=0, shear=0.0, show=False, show_boxes=True, show_conf=True, show_labels=True, simplify=True, single_cls=False, source=None, split=val, stream_buffer=False, task=detect, time=None, tracker=botsort.yaml, translate=0.1, val=True, verbose=True, vid_stride=1, visualize=False, warmup_bias_lr=0.1, warmup_epochs=3.0, warmup_momentum=0.8, weight_decay=0.0005, workers=8, workspace=None
+Overriding model.yaml nc=80 with nc=7
+
+                   from  n    params  module                                       arguments                     
+  0                  -1  1      1856  ultralytics.nn.modules.conv.Conv             [3, 64, 3, 2]                 
+  1                  -1  1     73984  ultralytics.nn.modules.conv.Conv             [64, 128, 3, 2]               
+  2                  -1  1    111872  ultralytics.nn.modules.block.C3k2            [128, 256, 1, True, 0.25]     
+  3                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+  4                  -1  1    444928  ultralytics.nn.modules.block.C3k2            [256, 512, 1, True, 0.25]     
+  5                  -1  1   2360320  ultralytics.nn.modules.conv.Conv             [512, 512, 3, 2]              
+  6                  -1  1   1380352  ultralytics.nn.modules.block.C3k2            [512, 512, 1, True]           
+  7                  -1  1   2360320  ultralytics.nn.modules.conv.Conv             [512, 512, 3, 2]              
+  8                  -1  1   1380352  ultralytics.nn.modules.block.C3k2            [512, 512, 1, True]           
+  9                  -1  1    656896  ultralytics.nn.modules.block.SPPF            [512, 512, 5]                 
+ 10                  -1  1    990976  ultralytics.nn.modules.block.C2PSA           [512, 512, 1]                 
+ 11                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 12             [-1, 6]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 13                  -1  1   1642496  ultralytics.nn.modules.block.C3k2            [1024, 512, 1, True]          
+ 14                  -1  1         0  torch.nn.modules.upsampling.Upsample         [None, 2, 'nearest']          
+ 15             [-1, 4]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 16                  -1  1    542720  ultralytics.nn.modules.block.C3k2            [1024, 256, 1, True]          
+ 17                  -1  1    590336  ultralytics.nn.modules.conv.Conv             [256, 256, 3, 2]              
+ 18            [-1, 13]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 19                  -1  1   1511424  ultralytics.nn.modules.block.C3k2            [768, 512, 1, True]           
+ 20                  -1  1   2360320  ultralytics.nn.modules.conv.Conv             [512, 512, 3, 2]              
+ 21            [-1, 10]  1         0  ultralytics.nn.modules.conv.Concat           [1]                           
+ 22                  -1  1   1642496  ultralytics.nn.modules.block.C3k2            [1024, 512, 1, True]          
+ 23        [16, 19, 22]  1   1416421  ultralytics.nn.modules.head.Detect           [7, [256, 512, 512]]          
+YOLO11m summary: 231 layers, 20,058,405 parameters, 20,058,389 gradients, 68.2 GFLOPs
+
+Transferred 643/649 items from pretrained weights
+Freezing layer 'model.23.dfl.conv.weight'
+[34m[1mtrain: [0mFast image access ✅ (ping: 0.0±0.0 ms, read: 34.4±6.9 MB/s, size: 8.0 KB)
+[K[34m[1mtrain: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/train/labels.cache... 6165 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 6165/6165 1.2Git/s 0.0s[K[34m[1mtrain: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/train/labels.cache... 6165 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 6165/6165 118.6Mit/s 0.0s
+WARNING ⚠️ Box and segment counts should be equal, but got len(segments) = 2168, len(boxes) = 10730. To resolve this only boxes will be used and all segments will be removed. To avoid this please supply either a detect or segment dataset, not a detect-segment mixed dataset.
+[34m[1mAutoBatch: [0mComputing optimal batch size for imgsz=1280 at 60.0% CUDA memory utilization.
+WARNING ⚠️ [34m[1mAutoBatch: [0mintended for CUDA devices, using default batch-size 16
+[34m[1mtrain: [0mFast image access ✅ (ping: 0.0±0.0 ms, read: 29.9±2.2 MB/s, size: 9.6 KB)
+[K[34m[1mtrain: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/train/labels.cache... 6165 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 6165/6165 3.7Git/s 0.0s[K[34m[1mtrain: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/train/labels.cache... 6165 images, 0 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 6165/6165 158.6Mit/s 0.0s
+WARNING ⚠️ Box and segment counts should be equal, but got len(segments) = 2168, len(boxes) = 10730. To resolve this only boxes will be used and all segments will be removed. To avoid this please supply either a detect or segment dataset, not a detect-segment mixed dataset.
+[34m[1mval: [0mFast image access ✅ (ping: 0.0±0.0 ms, read: 47.3±24.1 MB/s, size: 7.7 KB)
+[K[34m[1mval: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/valid/labels.cache... 1047 images, 2 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 1047/1047 548.9Mit/s 0.0s[K[34m[1mval: [0mScanning /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/Cholec80.v3-cholec80-10.yolov11/valid/labels.cache... 1047 images, 2 backgrounds, 0 corrupt: 100% ━━━━━━━━━━━━ 1047/1047 43.9Mit/s 0.0s
+WARNING ⚠️ Box and segment counts should be equal, but got len(segments) = 390, len(boxes) = 1801. To resolve this only boxes will be used and all segments will be removed. To avoid this please supply either a detect or segment dataset, not a detect-segment mixed dataset.
+Plotting labels to /Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/training_scripts/surgical_tool_training_runs/yolo11m_cholec80_run13/labels.jpg... 
+[34m[1moptimizer:[0m 'optimizer=auto' found, ignoring 'lr0=0.01' and 'momentum=0.937' and determining best 'optimizer', 'lr0' and 'momentum' automatically... 
+[34m[1moptimizer:[0m AdamW(lr=0.000909, momentum=0.9) with parameter groups 106 weight(decay=0.0), 113 weight(decay=0.0005), 112 bias(decay=0.0)
+Image sizes 1280 train, 1280 val
+Using 0 dataloader workers
+Logging results to [1m/Users/Miranda/twelveLabs/surgical-tool-detection/cv_model/training_scripts/surgical_tool_training_runs/yolo11m_cholec80_run13[0m
+Starting training for 100 epochs...
+
+      Epoch    GPU_mem   box_loss   cls_loss   dfl_loss  Instances       Size
