@@ -13,10 +13,20 @@ from ultralytics import YOLO
 def main():
     load_dotenv()
 
-    # Check if GPU is available
-    is_available = torch.cuda.is_available()
-    device = 0 if is_available else 'cpu'
-    print(f"GPU Available: {is_available}")
+    # Check if GPU is available (CUDA or MPS for Apple Silicon)
+    cuda_available = torch.cuda.is_available()
+    mps_available = torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False
+
+    if cuda_available:
+        device = 0
+        print(f"GPU Available: CUDA")
+    elif mps_available:
+        device = 'mps'
+        print(f"GPU Available: MPS (Apple Silicon)")
+    else:
+        device = 'cpu'
+        print(f"GPU Available: False")
+
     print(f"Using device: {device}")
 
     # Find the latest training run
@@ -71,7 +81,7 @@ def main():
 
         epochs=100,
         patience=20,
-        batch=-1,
+        batch=4,  # Reduced batch size for MPS memory constraints (was -1 for auto)
         imgsz=1280,
         device=device,
 

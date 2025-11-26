@@ -1,0 +1,199 @@
+Build a Surgical Video Insight Application that analyzes surgical procedure videos using Twelve Labs API and YOLO-based surgical tool detection.
+
+IMPORTANT: The surgical tool detection model has ALREADY BEEN TRAINED. Use the existing trained model - DO NOT train a new model.
+
+REFERENCE INSTRUCTIONS:
+- Follow Twelve Labs application creation guide: https://scribehow.com/viewer/Twelve_Labs__Create_a_Application_and_Preview_Live__97No7zooRhailQFnyEJIXQ
+- Use existing PPE detection app structure as template (similar architecture but for surgical videos)
+
+PROJECT STRUCTURE:
+1. Frontend: Next.js 14+ app with App Router (similar to existing frontend/)
+2. Backend: FastAPI worker for video processing (similar to rtsp-stream-worker/)
+3. CV Model: Use the PRE-TRAINED YOLO11m model (best.pt) - training is already complete
+
+PRE-TRAINED MODEL DETAILS:
+- Model file location: cv_model/training_scripts/best.pt
+- Model type: YOLO11m
+- Training status: COMPLETED (100 epochs, mAP50: 0.871)
+- Reference inference code: cv_model/training_scripts/inference_surgical_tools.py
+- DO NOT retrain the model - use the existing best.pt file directly
+
+CORE FEATURES:
+
+1. VIDEO UPLOAD & PROCESSING
+- Upload surgical videos (MP4, MOV)
+- Show real-time processing progress
+- Chunk long videos for efficient processing
+- Support both file upload and RTSP streams
+
+2. SURGICAL TOOL DETECTION (USE PRE-TRAINED MODEL)
+The model training is ALREADY COMPLETE. Use the existing trained model file.
+
+Pre-trained Model:
+- Model file: cv_model/training_scripts/best.pt (ALREADY EXISTS - DO NOT TRAIN)
+- Model performance: mAP50: 0.871, Precision: 0.889, Recall: 0.825
+- Training completed: 100 epochs on Cholec80 dataset
+- Reference implementation: See cv_model/training_scripts/inference_surgical_tools.py
+
+Detect 7 surgical tools (model already trained for these):
+- Bipolar, Clipper, Grasper, Hook, Irrigator, Scissors, Specimen Bag
+
+Implementation (use existing model):
+- Load the pre-trained model: YOLO("cv_model/training_scripts/best.pt")
+- Use Ultralytics YOLO library (already installed)
+- Detection parameters: conf=0.4, iou=0.45, imgsz=640
+- Draw bounding boxes on video frames with tool labels and confidence scores
+- Generate annotated video output
+- Extract detection data: tool names, confidence scores, bounding boxes, timestamps
+- Follow the pattern from inference_surgical_tools.py but integrate into FastAPI backend
+
+3. TWELVE LABS INTEGRATION (USE EXISTING API ENDPOINTS)
+The Twelve Labs integration is ALREADY IMPLEMENTED. Use the existing API endpoints:
+
+- Video Upload: POST /api/video (already implemented)
+- Video Analysis: POST /api/analysis (already implemented - this is the main API for chat, reports, and tool analysis)
+  * Takes { userQuery, videoId }
+  * Returns analysis based on the prompt
+  * Use this for: chat, tool detection results, report generation (just change the prompt)
+- Video Search: POST /api/search (already implemented)
+- Timeline/Chapters: POST /api/timeline (already implemented)
+- Video Gist: GET /api/analysis/[videoId] (already implemented)
+
+How to use for different purposes:
+- Chat/Q&A: POST /api/analysis with { userQuery: "user's question", videoId: "..." }
+- Tool Detection Results: POST /api/analysis with { userQuery: "detailed tool analysis prompt", videoId: "..." }
+- Report Generation: POST /api/analysis with { userQuery: "comprehensive report prompt", videoId: "..." }
+
+4. AUTOMATED REPORT GENERATION
+Generate comprehensive PDF/JSON reports including:
+- Procedure metadata (date, duration, procedure type)
+- Tool usage statistics:
+  * Total detections per tool
+  * Average confidence per tool
+  * Tool usage timeline
+  * Most/least frequently used tools
+- Key moments and highlights
+- Visual charts and graphs (tool frequency, timeline visualization)
+- Export options: PDF, JSON, CSV
+
+5. UI COMPONENTS (Reference existing app structure)
+- Dashboard: Procedure library with search and filters
+- Video Upload Page: Drag-and-drop upload with progress
+- Procedure Analysis Page:
+  * Video player with tool detection overlay
+  * Interactive timeline showing tool detections (color-coded by tool type)
+  * Chapter timeline (similar to ChapterTimeline.js)
+  * Event timeline (similar to EventTimeline.js)
+  * Statistics panel (tool counts, confidence scores)
+  * Chat interface for video Q&A (similar to ClipChat.js)
+- Report Viewer: PDF viewer with download/share options
+
+TECHNICAL IMPLEMENTATION:
+
+Backend (FastAPI):
+```python
+# Tool Detection Class - USE PRE-TRAINED MODEL
+# Reference: cv_model/training_scripts/inference_surgical_tools.py
+from ultralytics import YOLO
+import os
+
+class SurgicalToolDetector:
+    def __init__(self):
+        # Use the existing pre-trained model (training already complete)
+        model_path = os.path.join("cv_model", "training_scripts", "best.pt")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Pre-trained model not found: {model_path}")
+        self.model = YOLO(model_path)  # Load existing trained model
+
+    def detect_tools(self, video_path):
+        # Use the pre-trained model for inference
+        results = self.model.predict(
+            video_path,
+            conf=0.4,
+            iou=0.45,
+            imgsz=640,
+            save=True
+        )
+        # Process results: extract tool names, confidence, bboxes, timestamps
+        return processed_detections
+```
+
+API Endpoints (Reference existing implementation):
+
+EXISTING ENDPOINTS (already implemented - use these):
+- POST /api/video - Upload video file and get video list (see frontend/src/app/api/video/route.js)
+- POST /api/analysis - Twelve Labs analyze API (see frontend/src/app/api/analysis/route.js)
+  * Takes: { userQuery, videoId }
+  * Uses: twelvelabs_client.analyze({ videoId, prompt: userQuery, temperature: 0.2 })
+- GET /api/analysis/[videoId] - Get video gist (title, topic, hashtag)
+- POST /api/search - Semantic video search (see frontend/src/app/api/search/route.js)
+- POST /api/timeline - Generate timeline using summarize API (see frontend/src/app/api/timeline/route.js)
+
+NEW ENDPOINTS TO IMPLEMENT:
+- GET /api/procedure/[id] - Get procedure data (combine video info + tool detection results + analysis)
+
+IMPORTANT: Report and Tools should use the EXISTING /api/analysis endpoint with specific prompts:
+- Tool Detection Results: Call POST /api/analysis with prompt like:
+  "Analyze this surgical video and provide a detailed breakdown of all surgical tools detected, including: tool names, frequency of use, timestamps when each tool appears, and confidence scores. Format the response as JSON with tool statistics."
+
+- Report Generation: Call POST /api/analysis with prompt like:
+  "Generate a comprehensive surgical procedure report for this video including: procedure summary, tool usage statistics, key moments, timeline of tool transitions, and any notable observations. Format as a structured report."
+
+- Chat: Use the same POST /api/analysis endpoint - it's already a chat-like interface that takes userQuery and videoId
+
+Video Processing Flow:
+1. User uploads video → Use existing POST /api/video endpoint
+2. Backend worker processes video:
+   - Chunk video into manageable segments
+   - For each chunk:
+     * Run YOLO tool detection (using pre-trained best.pt)
+     * Draw bounding boxes on frames
+     * Generate annotated video
+     * Upload to Twelve Labs index
+3. Video is indexed in Twelve Labs (Marengo and Pegasus indexes)
+4. Frontend can now:
+   - Use POST /api/analysis with specific prompts for tool detection results
+   - Use POST /api/analysis with specific prompts for report generation
+   - Use POST /api/analysis for chat/Q&A (just pass userQuery and videoId)
+   - Use POST /api/search for semantic video search
+   - Use POST /api/timeline for timeline generation
+
+Frontend (Next.js):
+- Pages: / (dashboard), /upload, /procedure/[id], /reports
+- Components: VideoPlayer, ToolDetectionOverlay, ToolTimeline, ChapterTimeline, ReportViewer, VideoChat
+- Use Tailwind CSS for styling
+- Medical/clinical theme (blues, whites, greens)
+- Responsive design
+
+ENVIRONMENT VARIABLES:
+TWELVE_LABS_API_KEY=your_api_key
+API_BASE_URL=http://localhost:8000
+CV_MODEL_PATH=./cv_model/training_scripts/best.pt
+
+DELIVERABLES:
+1. Complete Next.js frontend with all UI components
+2. FastAPI backend with surgical tool detection integration (using PRE-TRAINED best.pt model)
+3. Twelve Labs API integration (upload, search, chat, chapters)
+4. Automated report generation (PDF/JSON)
+5. Video processing pipeline with real-time progress
+6. Error handling and loading states
+7. Responsive, professional UI
+
+IMPORTANT REMINDERS:
+- DO NOT train a new model - use cv_model/training_scripts/best.pt (already trained)
+- Reference cv_model/training_scripts/inference_surgical_tools.py for inference implementation
+- The model training is complete - just integrate it into the application
+
+SUCCESS CRITERIA:
+✅ Upload surgical videos and process successfully
+✅ Detect all 7 tool classes with high accuracy (using best.pt model)
+✅ Generate comprehensive procedure reports
+✅ Enable semantic video search via Twelve Labs
+✅ Interactive video playback with tool detection overlays
+✅ Chat-based Q&A about video content
+✅ Export reports in multiple formats
+
+Start by creating the project structure, then implement video upload/processing, tool detection integration (using the PRE-TRAINED best.pt model - do not train), Twelve Labs integration, UI components, and finally report generation. Follow the Twelve Labs instruction guide for proper API integration.
+
+REMEMBER: The surgical tool detection model is already trained and ready to use. Simply load best.pt and use it for inference - no training needed.
+
