@@ -4,28 +4,13 @@ import React, { useEffect, useRef, useState } from "react";
 const AGENT_NAME = "Dr. Sage";
 
 export default function ClipChat({ videoId }) {
-  // Load chat history from localStorage if available, otherwise use default
-  const getStoredChatHistory = () => {
-    if (typeof window !== "undefined" && videoId) {
-      const stored = localStorage.getItem(`chat_history_${videoId}`);
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch (e) {
-          console.error("Error parsing stored chat history:", e);
-        }
-      }
-    }
-    return [
-      {
-        role: "assistant",
-        text: `Hello! I am ${AGENT_NAME}, your AI surgical video analysis assistant. I can help you analyze surgical procedures, identify phases, detect tools, and generate operative reports. How can I assist you today?`,
-        date: Date.now(),
-      },
-    ];
-  };
-
-  const [chatHistory, setChatHistory] = useState(getStoredChatHistory);
+  const [chatHistory, setChatHistory] = useState(() => [
+    {
+      role: "assistant",
+      text: `Hello! I am ${AGENT_NAME}, your AI surgical video analysis assistant. I can help you analyze surgical procedures, identify phases, detect tools, and generate operative reports. How can I assist you today?`,
+      date: Date.now(),
+    },
+  ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -51,19 +36,7 @@ export default function ClipChat({ videoId }) {
     if (messagesRef.current) {
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     }
-
-    // Save chat history to localStorage whenever it changes
-    if (typeof window !== "undefined" && videoId && chatHistory.length > 0) {
-      try {
-        localStorage.setItem(
-          `chat_history_${videoId}`,
-          JSON.stringify(chatHistory)
-        );
-      } catch (e) {
-        console.error("Error saving chat history to localStorage:", e);
-      }
-    }
-  }, [chatHistory, isLoading, videoId]);
+  }, [chatHistory, isLoading]);
 
   function formatDate(ts) {
     const d = new Date(ts);
