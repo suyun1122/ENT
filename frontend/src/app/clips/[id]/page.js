@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ChapterTimeline from "@/app/components/ChapterTimeline";
 
 export default function ClipDetailPage({ params }) {
-    
+
     const [clipData, setClipData] = useState(null);
     const [buttonMetadata, setButtonMetadata] = useState([]);
     const [cachedData, setCachedData] = useState(null);
@@ -39,7 +39,7 @@ export default function ClipDetailPage({ params }) {
             const timer = setTimeout(() => {
                 startAutoRetry();
             }, 2000);
-            
+
             return () => clearTimeout(timer);
         }
     }, [error]);
@@ -48,26 +48,10 @@ export default function ClipDetailPage({ params }) {
 
     const loadClipData = async () => {
 
-        const VSS_BASE_URL = process.env.NEXT_PUBLIC_VSS_BASE_URL;
-
-        if (!VSS_BASE_URL) {
-            console.error("No VSS base URL found");
-            return;
-        }
-
         try {
-
-            /*
-            // Fetch NVIDIA VSS file data mappings for VSS ID and file name.
-            const vss_response = await fetch(`${VSS_BASE_URL}/files?purpose=vision`);
-
-            if (!vss_response.ok) {
-                console.error("Failed to load clip data");
-                return;
-            }
-            const vss_data = await vss_response.json();
-            const vss_file_data = vss_data['data'];
-            */
+            // Decode URL-encoded filename
+            const decodedId = decodeURIComponent(id);
+            console.log("Loading clip data for:", decodedId);
 
             const response = await fetch('/api/video', {
                 method: 'GET',
@@ -77,55 +61,84 @@ export default function ClipDetailPage({ params }) {
             })
 
             if (!response.ok) {
-                console.error("Failed to load clip data");
+                const errorText = await response.text();
+                console.error("Failed to load clip data", {
+                    status: response.status,
+                    statusText: response.statusText,
+                    error: errorText
+                });
+                setError({
+                    type: 'load_error',
+                    message: `Failed to load video data: ${response.status} ${response.statusText}`
+                });
                 return;
             }
 
             const data = await response.json();
-            
-            /*
-            // Map VSS file data to Twelve Labs file data and sample IDs.
-            for (let fileData of vss_file_data) {
-                const fileName = fileData['filename'];
-                if (fileName in data) {
-                    data[fileName]['vss_id'] = fileData['id'];
-                }
-            }
-            */
+            console.log("Video data loaded:", data);
 
-            for (let sampleId of sampleIds) {
-                const fileName = sampleId[0];
-                const vssId = sampleId[1];
-                if (fileName in data) {
-                    data[fileName]['vss_id'] = vssId;
-                }
-            }
+            // Try to find the clip by filename (try both encoded and decoded versions)
+            let foundClip = null;
 
             for (let key in data) {
                 const item = data[key];
-                if (id === item['filename']) {
-                    console.log("Clip found", item);
-                    setClipData(item);
-                    return item
+                const itemFilename = item['filename'] || item['systemMetadata']?.filename || key;
+
+                // Try exact match first
+                if (decodedId === itemFilename || id === itemFilename) {
+                    foundClip = item;
+                    break;
+                }
+
+                // Try case-insensitive match
+                if (decodedId.toLowerCase() === itemFilename.toLowerCase() ||
+                    id.toLowerCase() === itemFilename.toLowerCase()) {
+                    foundClip = item;
+                    break;
+                }
+
+                // Try partial match (in case of URL encoding issues)
+                if (itemFilename.includes(decodedId) || decodedId.includes(itemFilename)) {
+                    foundClip = item;
+                    break;
                 }
             }
 
-            console.log("Clip name", id);
-            console.log("Data", data);
-            console.log("Mapped data", data);
-
-            return null;
+            if (foundClip) {
+                console.log("Clip found:", foundClip);
+                // Ensure required fields are set
+                if (!foundClip.filename) {
+                    foundClip.filename = foundClip.systemMetadata?.filename || decodedId;
+                }
+                if (!foundClip.id && foundClip.pegasusId) {
+                    foundClip.id = foundClip.pegasusId;
+                }
+                setClipData(foundClip);
+                return foundClip;
+            } else {
+                console.warn("Clip not found. ID:", decodedId);
+                console.warn("Available clips:", Object.keys(data));
+                setError({
+                    type: 'clip_not_found',
+                    message: `Video "${decodedId}" not found in index.`
+                });
+                return null;
+            }
 
         } catch (error) {
             console.error("Error loading clip data", error);
+            setError({
+                type: 'load_error',
+                message: `Error loading video: ${error.message}`
+            });
             return;
         }
     }
 
     async function generateButtonMetadata() {
         const prompt = `
-        Generate button metadata for the factory video attached for compliance issues, issues with personal protective equipment usage, and potential improvements for efficiency. 
-        
+        Generate button metadata for the factory video attached for compliance issues, issues with personal protective equipment usage, and potential improvements for efficiency.
+
         Each button should have the following data:
         - title: A concise title summarizing the issue or improvement.
         - description: A detailed description explaining the issue or improvement, its implications, and recommended actions.
@@ -135,7 +148,7 @@ export default function ClipDetailPage({ params }) {
         - start: Start time in seconds when the button should appear.
         - end: End time in seconds when the button should disappear.
         - link: (optional) A URL linking to more information or resources related to the issue or improvement.
-        
+
         If multiple issues or improvements are identified, create separate buttons for each. Ensure that the coordinates accurately reflect the location of the issue or improvement in the video frame.
         Ensure x, y percentages are highly accurate. For example, if the issue is with gloves, the percentages should point to the hands of the worker.
         Take into account the factory setting in video content and include relevant safety and compliance considerations into your description.
@@ -156,7 +169,7 @@ export default function ClipDetailPage({ params }) {
         }]
 
         `;
-        
+
         try {
 
             if (!clipData || !clipData.pegasusId) {
@@ -176,7 +189,7 @@ export default function ClipDetailPage({ params }) {
             if (!response.ok) {
                 const errorData = await response.json();
                 console.error("Failed to analyze video", errorData);
-                
+
                 // Check for video_not_ready error
                 if (errorData.code === 'video_not_ready') {
                     setError({
@@ -185,7 +198,7 @@ export default function ClipDetailPage({ params }) {
                     });
                     return;
                 }
-                
+
                 // Check for video_not_uploaded error
                 if (errorData.code === 'video_not_uploaded') {
                     setError({
@@ -194,7 +207,7 @@ export default function ClipDetailPage({ params }) {
                     });
                     return;
                 }
-                
+
                 setError({
                     type: 'analysis_error',
                     message: 'Failed to analyze video. Please try again.'
@@ -204,7 +217,7 @@ export default function ClipDetailPage({ params }) {
 
             const data = await response.json();
             console.log("Analysis API response:", data);
-            
+
             // Check if the response has the expected structure
             if (data && data.data) {
                 try {
@@ -257,7 +270,7 @@ export default function ClipDetailPage({ params }) {
             if (!response.ok) {
                 const errorData = await response.json();
                 console.error("Failed to fetch cached analysis data", errorData);
-                
+
                 // Check for video_not_ready error
                 if (errorData.code === 'video_not_ready') {
                     setError({
@@ -266,7 +279,7 @@ export default function ClipDetailPage({ params }) {
                     });
                     return;
                 }
-                
+
                 // Check for video_not_uploaded error
                 if (errorData.code === 'video_not_uploaded') {
                     setError({
@@ -275,7 +288,7 @@ export default function ClipDetailPage({ params }) {
                     });
                     return;
                 }
-                
+
                 // For cached data, we can continue without it
                 console.warn("Could not fetch cached analysis data, continuing without it");
                 return;
@@ -298,7 +311,7 @@ export default function ClipDetailPage({ params }) {
         setIsRetrying(true);
         setError(null);
         setRetryCount(prev => prev + 1);
-        
+
         try {
             await generateButtonMetadata();
             await generateCacheData();
@@ -311,20 +324,20 @@ export default function ClipDetailPage({ params }) {
 
     const startAutoRetry = () => {
         if (isAutoRetrying) return;
-        
+
         setIsAutoRetrying(true);
         setRetryCount(0);
-        
+
         const autoRetry = async () => {
             if (retryCount >= 10) { // Max 10 retries
                 setIsAutoRetrying(false);
                 return;
             }
-            
+
             try {
                 await generateButtonMetadata();
                 await generateCacheData();
-                
+
                 // If successful, stop auto-retry
                 if (!error) {
                     setIsAutoRetrying(false);
@@ -333,14 +346,14 @@ export default function ClipDetailPage({ params }) {
             } catch (error) {
                 console.error("Error during auto-retry", error);
             }
-            
+
             // Wait 5 seconds before next retry
             setTimeout(() => {
                 setRetryCount(prev => prev + 1);
                 autoRetry();
             }, 5000);
         };
-        
+
         autoRetry();
     };
 
@@ -399,12 +412,12 @@ export default function ClipDetailPage({ params }) {
                     )}
                 </div>
             </div>
-            
+
             {/* Error Display */}
             {error && (
                 <div className={`mt-4 rounded-lg p-6 border ${
-                    error.type === 'video_not_uploaded' 
-                        ? 'bg-blue-50 border-blue-200' 
+                    error.type === 'video_not_uploaded'
+                        ? 'bg-blue-50 border-blue-200'
                         : error.type === 'video_not_ready'
                         ? 'bg-amber-50 border-amber-200'
                         : 'bg-red-50 border-red-200'
@@ -427,29 +440,29 @@ export default function ClipDetailPage({ params }) {
                         </div>
                         <div className="ml-3 flex-1">
                             <h3 className={`text-lg font-medium ${
-                                error.type === 'video_not_uploaded' 
-                                    ? 'text-blue-800' 
+                                error.type === 'video_not_uploaded'
+                                    ? 'text-blue-800'
                                     : error.type === 'video_not_ready'
                                     ? 'text-amber-800'
                                     : 'text-red-800'
                             }`}>
-                                {error.type === 'video_not_uploaded' 
-                                    ? 'Video Being Uploaded' 
+                                {error.type === 'video_not_uploaded'
+                                    ? 'Video Being Uploaded'
                                     : error.type === 'video_not_ready'
                                     ? 'Video Still Processing'
                                     : 'Analysis Error'
                                 }
                             </h3>
                             <p className={`mt-1 text-sm ${
-                                error.type === 'video_not_uploaded' 
-                                    ? 'text-blue-700' 
+                                error.type === 'video_not_uploaded'
+                                    ? 'text-blue-700'
                                     : error.type === 'video_not_ready'
                                     ? 'text-amber-700'
                                     : 'text-red-700'
                             }`}>
                                 {error.message}
                             </p>
-                            
+
                             {/* Auto-retry status for upload/processing errors */}
                             {(error.type === 'video_not_uploaded' || error.type === 'video_not_ready') && (
                                 <div className="mt-3">
@@ -468,7 +481,7 @@ export default function ClipDetailPage({ params }) {
                                     )}
                                 </div>
                             )}
-                            
+
                             <div className="mt-4 flex gap-3">
                                 <button
                                     onClick={retryAnalysis}
@@ -492,7 +505,7 @@ export default function ClipDetailPage({ params }) {
                                         </>
                                     )}
                                 </button>
-                                
+
                                 {(error.type === 'video_not_uploaded' || error.type === 'video_not_ready') && (
                                     <>
                                         {!isAutoRetrying ? (
@@ -527,7 +540,7 @@ export default function ClipDetailPage({ params }) {
             {/* ClipBento Component with Video, Chat, and Forensics */}
             <div className="mt-4">
                 {clipData ? (
-                    <ClipBento 
+                    <ClipBento
                         clipData={clipData}
                         buttonMetadata={buttonMetadata}
                         videoId={clipData['pegasusId']}
