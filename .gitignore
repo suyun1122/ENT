@@ -18,3 +18,10 @@
 __pycache__*
 
 /media-autobuild_suite
+
+# Large files - videos and model weights
+*.mp4
+*.pt
+/runs/
+/cv_model/training_scripts/surgical_tool_training_runs/
+/cv_model/training_scripts/*.pt
