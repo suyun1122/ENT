@@ -21,6 +21,7 @@ import {
   CalendarDaysIcon,
   UserIcon,
   ClipboardDocumentListIcon,
+  PencilIcon,
 } from "@heroicons/react/24/outline";
 import ClickableVideo from "./ClickableVideo";
 import ClipChat from "./ClipChat";
@@ -43,6 +44,18 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
   const [correctiveActionStatuses, setCorrectiveActionStatuses] = useState({});
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const [chaptersError, setChaptersError] = useState(null);
+  const [isEditingSOAP, setIsEditingSOAP] = useState({
+    Subjective: false,
+    Objective: false,
+    Assessment: false,
+    Plan: false,
+  });
+  const [editedSOAP, setEditedSOAP] = useState({
+    Subjective: "",
+    Objective: "",
+    Assessment: "",
+    Plan: "",
+  });
 
   // Auto-load surgical analysis (chapters + operative note) when videoId is available
   useEffect(() => {
@@ -63,6 +76,11 @@ Your tasks:
 
 1. Chapterize the surgery using the predefined surgical phases below.
 2. Generate a SOAP-inspired operative note STRICTLY based on what is visible in the video.
+   - CRITICAL: Write the operative note in FIRST-PERSON perspective
+   - Use "I performed...", "I observed...", "I assessed...", "I identified..."
+   - Write as if you are the surgeon documenting the procedure
+   - Example: "I made an incision..." instead of "An incision was made..."
+   - Example: "I identified the cystic duct..." instead of "The cystic duct was identified..."
 
 IMPORTANT GLOBAL RULES (SURGEON-SAFE GUARDRAILS):
 
@@ -179,6 +197,57 @@ Respond with a single valid JSON object in the following format:
 
     loadSurgicalAnalysis();
   }, [videoId]);
+
+  // Initialize edited SOAP when operating note is loaded
+  useEffect(() => {
+    if (operatingNote && operatingNote.SOAP) {
+      setEditedSOAP({
+        Subjective: operatingNote.SOAP.Subjective,
+        Objective: operatingNote.SOAP.Objective,
+        Assessment: operatingNote.SOAP.Assessment,
+        Plan: operatingNote.SOAP.Plan,
+      });
+    }
+  }, [operatingNote]);
+
+  const handleEditSOAP = (section) => {
+    setIsEditingSOAP((prev) => ({
+      ...prev,
+      [section]: true,
+    }));
+  };
+
+  const handleSaveSOAP = (section) => {
+    setOperatingNote((prev) => ({
+      ...prev,
+      SOAP: {
+        ...prev.SOAP,
+        [section]: editedSOAP[section],
+      },
+    }));
+    setIsEditingSOAP((prev) => ({
+      ...prev,
+      [section]: false,
+    }));
+  };
+
+  const handleCancelEdit = (section) => {
+    setEditedSOAP((prev) => ({
+      ...prev,
+      [section]: operatingNote.SOAP[section],
+    }));
+    setIsEditingSOAP((prev) => ({
+      ...prev,
+      [section]: false,
+    }));
+  };
+
+  const handleSOAPChange = (section, value) => {
+    setEditedSOAP((prev) => ({
+      ...prev,
+      [section]: value,
+    }));
+  };
 
   const mockForensicsData = {
     compliance: {
@@ -623,54 +692,206 @@ Respond with a single valid JSON object in the following format:
                   <div className="space-y-4">
                     {/* Subjective */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
-                      <h4 className="font-semibold text-gray-900 mb-2 flex items-center space-x-2">
-                        <span className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-sm font-bold">
-                          S
-                        </span>
-                        <span>Subjective</span>
-                      </h4>
-                      <p className="text-sm text-gray-800 leading-relaxed pl-10">
-                        {operatingNote.SOAP.Subjective}
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                          <span className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-sm font-bold">
+                            S
+                          </span>
+                          <span>Subjective</span>
+                        </h4>
+                        {!isEditingSOAP.Subjective ? (
+                          <button
+                            onClick={() => handleEditSOAP("Subjective")}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleSaveSOAP("Subjective")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                            >
+                              <CheckCircleIcon className="h-3 w-3" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              onClick={() => handleCancelEdit("Subjective")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                            >
+                              <XCircleIcon className="h-3 w-3" />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!isEditingSOAP.Subjective ? (
+                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                          {operatingNote.SOAP.Subjective}
+                        </p>
+                      ) : (
+                        <textarea
+                          value={editedSOAP.Subjective}
+                          onChange={(e) =>
+                            handleSOAPChange("Subjective", e.target.value)
+                          }
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-emerald-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white min-h-[100px]"
+                        />
+                      )}
                     </div>
 
                     {/* Objective */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
-                      <h4 className="font-semibold text-gray-900 mb-2 flex items-center space-x-2">
-                        <span className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-bold">
-                          O
-                        </span>
-                        <span>Objective</span>
-                      </h4>
-                      <p className="text-sm text-gray-800 leading-relaxed pl-10">
-                        {operatingNote.SOAP.Objective}
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                          <span className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-bold">
+                            O
+                          </span>
+                          <span>Objective</span>
+                        </h4>
+                        {!isEditingSOAP.Objective ? (
+                          <button
+                            onClick={() => handleEditSOAP("Objective")}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleSaveSOAP("Objective")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                            >
+                              <CheckCircleIcon className="h-3 w-3" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              onClick={() => handleCancelEdit("Objective")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                            >
+                              <XCircleIcon className="h-3 w-3" />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!isEditingSOAP.Objective ? (
+                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                          {operatingNote.SOAP.Objective}
+                        </p>
+                      ) : (
+                        <textarea
+                          value={editedSOAP.Objective}
+                          onChange={(e) =>
+                            handleSOAPChange("Objective", e.target.value)
+                          }
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[150px]"
+                        />
+                      )}
                     </div>
 
                     {/* Assessment */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
-                      <h4 className="font-semibold text-gray-900 mb-2 flex items-center space-x-2">
-                        <span className="w-8 h-8 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-sm font-bold">
-                          A
-                        </span>
-                        <span>Assessment</span>
-                      </h4>
-                      <p className="text-sm text-gray-800 leading-relaxed pl-10">
-                        {operatingNote.SOAP.Assessment}
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                          <span className="w-8 h-8 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-sm font-bold">
+                            A
+                          </span>
+                          <span>Assessment</span>
+                        </h4>
+                        {!isEditingSOAP.Assessment ? (
+                          <button
+                            onClick={() => handleEditSOAP("Assessment")}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleSaveSOAP("Assessment")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                            >
+                              <CheckCircleIcon className="h-3 w-3" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              onClick={() => handleCancelEdit("Assessment")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                            >
+                              <XCircleIcon className="h-3 w-3" />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!isEditingSOAP.Assessment ? (
+                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                          {operatingNote.SOAP.Assessment}
+                        </p>
+                      ) : (
+                        <textarea
+                          value={editedSOAP.Assessment}
+                          onChange={(e) =>
+                            handleSOAPChange("Assessment", e.target.value)
+                          }
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-purple-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white min-h-[120px]"
+                        />
+                      )}
                     </div>
 
                     {/* Plan */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
-                      <h4 className="font-semibold text-gray-900 mb-2 flex items-center space-x-2">
-                        <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-sm font-bold">
-                          P
-                        </span>
-                        <span>Plan</span>
-                      </h4>
-                      <p className="text-sm text-gray-800 leading-relaxed pl-10">
-                        {operatingNote.SOAP.Plan}
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
+                          <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-sm font-bold">
+                            P
+                          </span>
+                          <span>Plan</span>
+                        </h4>
+                        {!isEditingSOAP.Plan ? (
+                          <button
+                            onClick={() => handleEditSOAP("Plan")}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors"
+                          >
+                            <PencilIcon className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleSaveSOAP("Plan")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                            >
+                              <CheckCircleIcon className="h-3 w-3" />
+                              <span>Save</span>
+                            </button>
+                            <button
+                              onClick={() => handleCancelEdit("Plan")}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                            >
+                              <XCircleIcon className="h-3 w-3" />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {!isEditingSOAP.Plan ? (
+                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                          {operatingNote.SOAP.Plan}
+                        </p>
+                      ) : (
+                        <textarea
+                          value={editedSOAP.Plan}
+                          onChange={(e) =>
+                            handleSOAPChange("Plan", e.target.value)
+                          }
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-amber-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white min-h-[100px]"
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
