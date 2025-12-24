@@ -2,8 +2,18 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import ClickableVideoButton from "./ClickableVideoButton";
+import ToolDetectionOverlay from "./ToolDetectionOverlay";
 
-export default function ClickableVideo({ hlsUrl, thumbnailUrl, button_metadata = [], height, width }) {
+export default function ClickableVideo({
+    hlsUrl,
+    thumbnailUrl,
+    button_metadata = [],
+    height,
+    width,
+    toolDetectionData = null,
+    showToolDetection = true,
+    enabledTools = null
+}) {
 
     const videoRef = useRef(null);
     const [videoTime, setVideoTime] = useState(0);
@@ -46,7 +56,7 @@ export default function ClickableVideo({ hlsUrl, thumbnailUrl, button_metadata =
 
     return (
         <div className="relative rounded-lg shadow-lg overflow-hidden" style={{ height: height || 'auto', width: width || '100%' }}>
-            <video 
+            <video
                 ref={videoRef}
                 className="w-full h-auto"
                 autoPlay
@@ -58,12 +68,22 @@ export default function ClickableVideo({ hlsUrl, thumbnailUrl, button_metadata =
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />
 
+            {/* Tool Detection Overlay */}
+            {toolDetectionData && showToolDetection && (
+                <ToolDetectionOverlay
+                    videoRef={videoRef}
+                    detectionData={toolDetectionData}
+                    isVisible={showToolDetection}
+                    enabledTools={enabledTools}
+                />
+            )}
+
             <div className="absolute inset-0 pointer-events-none">
                 {button_metadata ? button_metadata.map((btn, idx) => {
                     const { x = 50, y = 50, title, description, onClick, start, end, category, link } = btn;
                     if (!(start <= videoTime && videoTime <= end)) return null;
                     const ariaId = `cv-btn-tooltip-${idx}`;
-                    return ( 
+                    return (
                         <ClickableVideoButton
                             key={idx}
                             x={x}

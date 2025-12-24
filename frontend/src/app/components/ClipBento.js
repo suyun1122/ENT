@@ -25,6 +25,7 @@ import {
 } from "@heroicons/react/24/outline";
 import ClickableVideo from "./ClickableVideo";
 import ClipChat from "./ClipChat";
+import { ToolFilterPanel } from "./ToolDetectionOverlay";
 
 // Optional default geolocation (configure via NEXT_PUBLIC_DEFAULT_LAT/LON)
 const DEFAULT_LAT = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_LAT || "");
@@ -56,6 +57,119 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     Assessment: "",
     Plan: "",
   });
+
+  // Tool Detection State
+  const [toolDetectionData, setToolDetectionData] = useState(null);
+  const [isLoadingToolDetection, setIsLoadingToolDetection] = useState(false);
+  const [toolDetectionError, setToolDetectionError] = useState(null);
+  const [showToolDetection, setShowToolDetection] = useState(true);
+  const [enabledTools, setEnabledTools] = useState(null); // null means all enabled
+
+  // Auto-load tool detection when videoId is available
+  useEffect(() => {
+    const loadToolDetection = async () => {
+      if (!videoId) return;
+
+      setIsLoadingToolDetection(true);
+      setToolDetectionError(null);
+
+      try {
+        // Check if detection already exists
+        const response = await fetch(`/api/detect-tools/${videoId}`);
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          console.log("[Tool Detection] Results found:", data.data);
+          setToolDetectionData(data.data);
+        } else if (data.status === "not_found") {
+          console.log(
+            "[Tool Detection] No results found, starting processing..."
+          );
+          // Keep loading state true
+          setIsLoadingToolDetection(true);
+          // Start processing in background
+          const startResponse = await fetch(`/api/detect-tools/${videoId}`, {
+            method: "POST",
+          });
+          const startData = await startResponse.json();
+          console.log("[Tool Detection] Processing started:", startData);
+
+          // Poll for results
+          pollToolDetection(videoId);
+        } else if (data.status === "processing") {
+          console.log("[Tool Detection] Already processing, polling...");
+          // Set loading state to true while polling
+          setIsLoadingToolDetection(true);
+          pollToolDetection(videoId);
+        }
+      } catch (error) {
+        console.error("[Tool Detection] Error loading:", error);
+        setToolDetectionError(error.message);
+        setIsLoadingToolDetection(false);
+      }
+      // Don't set loading to false here if we're starting polling
+    };
+
+    loadToolDetection();
+  }, [videoId]);
+
+  // Poll for tool detection results
+  const pollToolDetection = async (videoId) => {
+    const maxAttempts = 60; // 5 minutes (5s interval)
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/detect-tools/${videoId}`);
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          console.log("[Tool Detection] Processing complete!");
+          setToolDetectionData(data.data);
+          setIsLoadingToolDetection(false);
+          return;
+        } else if (data.status === "error") {
+          console.error("[Tool Detection] Processing error:", data.error);
+          setToolDetectionError(data.error);
+          setIsLoadingToolDetection(false);
+          return;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 5000); // Poll every 5 seconds
+        } else {
+          setToolDetectionError("Processing timeout");
+          setIsLoadingToolDetection(false);
+        }
+      } catch (error) {
+        console.error("[Tool Detection] Poll error:", error);
+        setToolDetectionError(error.message);
+        setIsLoadingToolDetection(false);
+      }
+    };
+
+    poll();
+  };
+
+  const handleToggleTool = (toolName) => {
+    setEnabledTools((prev) => {
+      if (prev === null) {
+        // First toggle: disable this tool
+        const allTools = Object.values(toolDetectionData?.classes || {});
+        return allTools.filter((t) => t !== toolName);
+      } else {
+        if (prev.includes(toolName)) {
+          // Remove tool from enabled list
+          const newList = prev.filter((t) => t !== toolName);
+          return newList.length === 0 ? null : newList;
+        } else {
+          // Add tool to enabled list
+          return [...prev, toolName];
+        }
+      }
+    });
+  };
 
   // Auto-load surgical analysis (chapters + operative note) when videoId is available
   useEffect(() => {
@@ -537,7 +651,7 @@ Respond with a single valid JSON object in the following format:
       {/* Video and Chat Section */}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Video Section */}
-        <div className="w-full lg:w-1/2">
+        <div className="w-full lg:w-1/2 space-y-4">
           {clipData && (
             <ClickableVideo
               hlsUrl={clipData.hls?.video_url}
@@ -545,8 +659,103 @@ Respond with a single valid JSON object in the following format:
               height={null}
               width={null}
               button_metadata={buttonMetadata}
+              toolDetectionData={toolDetectionData}
+              showToolDetection={showToolDetection}
+              enabledTools={enabledTools}
             />
           )}
+
+          {/* Tool Detection Status & Filter Panel */}
+          <div className="mt-4">
+            {isLoadingToolDetection ? (
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl shadow-lg border border-emerald-200 p-6">
+                <div className="flex items-start space-x-4">
+                  <div className="flex-shrink-0">
+                    <div className="relative">
+                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-200 border-t-emerald-600"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <WrenchScrewdriverIcon className="h-5 w-5 text-emerald-600" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Processing Tool Detection
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Analyzing video with YOLO11m model to identify surgical
+                      instruments...
+                    </p>
+                    <div className="bg-white/50 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-700 font-medium">
+                          Progress
+                        </span>
+                        <span className="text-emerald-600 font-semibold">
+                          ~1-2 minutes
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full animate-pulse"
+                          style={{ width: "40%" }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-gray-500 italic">
+                        ✨ This only happens once. Results will be cached for
+                        instant loading next time.
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center space-x-2 text-xs text-gray-500">
+                      <div className="flex items-center space-x-1">
+                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                        <span>
+                          Detecting: Grasper, Clipper, Scissors, Hook,
+                          Irrigator, Bipolar, Specimen Bag
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : toolDetectionError ? (
+              <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl shadow-lg border border-red-200 p-6">
+                <div className="flex items-start space-x-4">
+                  <ExclamationTriangleIcon className="h-8 w-8 text-red-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-red-900 mb-2">
+                      Tool Detection Error
+                    </h3>
+                    <p className="text-sm text-red-700 mb-3">
+                      {toolDetectionError}
+                    </p>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : toolDetectionData ? (
+              <ToolFilterPanel
+                detectionData={toolDetectionData}
+                enabledTools={enabledTools}
+                onToggleTool={handleToggleTool}
+                isVisible={showToolDetection}
+                onToggleVisibility={() =>
+                  setShowToolDetection(!showToolDetection)
+                }
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+                <p className="text-sm text-gray-500">
+                  Tool detection not available for this video.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Chat Section */}
