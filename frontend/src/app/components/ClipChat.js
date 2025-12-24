@@ -3,6 +3,90 @@ import React, { useEffect, useRef, useState } from "react";
 // Agent name constant
 const AGENT_NAME = "Dr. Sage";
 
+// Simple markdown to HTML converter
+function parseMarkdown(text) {
+  if (!text) return "";
+
+  // Split into lines for processing
+  const lines = text.split("\n");
+  let html = "";
+  let inList = false;
+  let listItems = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // Check if line is a list item
+    const isListItem =
+      /^[-•*]\s+(.+)$/.test(line) || /^\d+\.\s+(.+)$/.test(line);
+
+    if (isListItem) {
+      // Extract list item content
+      const match = line.match(/^(?:[-•*]|\d+\.)\s+(.+)$/);
+      if (match) {
+        listItems.push(match[1]);
+        inList = true;
+      }
+    } else {
+      // If we were in a list, close it
+      if (inList && listItems.length > 0) {
+        html += '<ul class="list-disc list-inside my-2 ml-4 space-y-1">';
+        listItems.forEach((item) => {
+          // Process inline markdown in list items
+          item = item.replace(
+            /\*\*(.+?)\*\*/g,
+            '<strong class="font-semibold text-emerald-900">$1</strong>'
+          );
+          html += `<li class="text-sm">${item}</li>`;
+        });
+        html += "</ul>";
+        listItems = [];
+        inList = false;
+      }
+
+      // Process headers
+      if (line.startsWith("### ")) {
+        html += `<h3 class="text-base font-bold text-emerald-900 mt-3 mb-1">${line.substring(
+          4
+        )}</h3>`;
+      } else if (line.startsWith("## ")) {
+        html += `<h2 class="text-base font-bold text-emerald-900 mt-4 mb-2">${line.substring(
+          3
+        )}</h2>`;
+      } else if (line.startsWith("# ")) {
+        html += `<h1 class="text-lg font-bold text-emerald-900 mt-4 mb-2">${line.substring(
+          2
+        )}</h1>`;
+      } else if (line.trim() === "") {
+        html += '<div class="h-2"></div>';
+      } else {
+        // Process inline markdown
+        line = line.replace(
+          /\*\*(.+?)\*\*/g,
+          '<strong class="font-semibold text-emerald-900">$1</strong>'
+        );
+        line = line.replace(/\*([^*]+?)\*/g, '<em class="italic">$1</em>');
+        html += `<div class="mb-1">${line}</div>`;
+      }
+    }
+  }
+
+  // Close any remaining list
+  if (inList && listItems.length > 0) {
+    html += '<ul class="list-disc list-inside my-2 ml-4 space-y-1">';
+    listItems.forEach((item) => {
+      item = item.replace(
+        /\*\*(.+?)\*\*/g,
+        '<strong class="font-semibold text-emerald-900">$1</strong>'
+      );
+      html += `<li class="text-sm">${item}</li>`;
+    });
+    html += "</ul>";
+  }
+
+  return html;
+}
+
 export default function ClipChat({ videoId }) {
   const [chatHistory, setChatHistory] = useState(() => [
     {
@@ -342,9 +426,20 @@ export default function ClipChat({ videoId }) {
                 <div className="text-xs opacity-80">
                   {m.role === "user" ? "You" : AGENT_NAME}
                 </div>
-                <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">
-                  {m.text || (m.typing ? <TypingDots /> : "")}
-                </div>
+                {m.typing ? (
+                  <div className="mt-1 text-sm leading-snug">
+                    <TypingDots />
+                  </div>
+                ) : m.role === "assistant" ? (
+                  <div
+                    className="mt-1 text-sm leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: parseMarkdown(m.text) }}
+                  />
+                ) : (
+                  <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">
+                    {m.text}
+                  </div>
+                )}
                 <div className="mt-1 text-[10px] opacity-60 text-right">
                   {formatDate(m.date)}
                 </div>
