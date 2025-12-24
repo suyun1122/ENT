@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { 
-    PlayIcon, 
-    ClockIcon, 
+import {
+    PlayIcon,
+    ClockIcon,
     DocumentTextIcon,
     ChevronRightIcon,
     ExclamationTriangleIcon,
@@ -9,7 +9,7 @@ import {
     CheckCircleIcon
 } from "@heroicons/react/24/outline";
 
-export default function ChapterTimeline({ videoId, onSeekTo }) {
+export default function ChapterTimeline({ videoId, onSeekTo, externalChapters }) {
     const [chapters, setChapters] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -17,7 +17,30 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
     const [retryCount, setRetryCount] = useState(0);
     const [isAutoRetrying, setIsAutoRetrying] = useState(false);
 
+    // If external chapters are provided, use them instead of loading from API
     useEffect(() => {
+        if (externalChapters && externalChapters.length > 0) {
+            // Convert external chapters format to internal format
+            const convertedChapters = externalChapters.map((chapter, index) => ({
+                chapterNumber: index + 1,
+                chapterTitle: chapter.phase || chapter.chapterTitle || `Phase ${index + 1}`,
+                chapterSummary: chapter.description || chapter.chapterSummary || '',
+                startSec: chapter.start_time_sec || chapter.startSec || 0,
+                endSec: chapter.end_time_sec || chapter.endSec || 0
+            }));
+            setChapters(convertedChapters);
+            setIsLoading(false);
+            setError(null);
+            return;
+        }
+    }, [externalChapters]);
+
+    useEffect(() => {
+        // Skip loading if external chapters are provided
+        if (externalChapters && externalChapters.length > 0) {
+            return;
+        }
+
         const loadTimelineData = async () => {
             try {
                 setIsLoading(true);
@@ -47,7 +70,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    
+
                     // Check for video processing errors
                     if (errorData.code === 'video_not_ready' || errorData.code === 'video_not_uploaded') {
                         setError({
@@ -56,25 +79,25 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                         });
                         return;
                     }
-                    
+
                     throw new Error(`Failed to fetch timeline data: ${response.status}`);
                 }
 
                 const data = await response.json();
                 console.log("Timeline API response:", data);
-                
+
                 // Handle the expected data structure
                 if ("chapters" in data && Array.isArray(data.chapters)) {
                     const chapters = data.chapters;
                     console.log("Loaded chapters:", chapters.length);
-                    
+
                     // Log each chapter as expected
                     for (const chapter of chapters) {
                         console.log(
                             `Chapter ${chapter.chapterNumber}\nstart=${chapter.startSec}\nend=${chapter.endSec}\nTitle=${chapter.chapterTitle}\nSummary=${chapter.chapterSummary}`,
                         );
                     }
-                    
+
                     setChapters(chapters);
                     setError(null); // Clear any previous errors
                 } else if (data && typeof data === 'object') {
@@ -86,10 +109,10 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                         });
                         return;
                     }
-                    
+
                     // If it's a different structure, try to extract chapters from other possible locations
                     console.warn("Unexpected data structure, attempting to extract chapters:", data);
-                    
+
                     // Check if chapters might be in a different property
                     let chapters = null;
                     if (data.data && Array.isArray(data.data)) {
@@ -99,7 +122,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                     } else if (data.result && Array.isArray(data.result)) {
                         chapters = data.result;
                     }
-                    
+
                     if (chapters && chapters.length > 0) {
                         console.log("Extracted chapters from alternative structure:", chapters.length);
                         setChapters(chapters);
@@ -122,10 +145,10 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
             }
         };
 
-        if (videoId) {
+        if (videoId && (!externalChapters || externalChapters.length === 0)) {
             loadTimelineData();
         }
-    }, [videoId]);
+    }, [videoId, externalChapters]);
 
     // Auto-start retry for upload/processing errors
     useEffect(() => {
@@ -134,7 +157,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
             const timer = setTimeout(() => {
                 startAutoRetry();
             }, 2000);
-            
+
             return () => clearTimeout(timer);
         }
     }, [error]);
@@ -143,7 +166,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
         setIsRetrying(true);
         setError(null);
         setRetryCount(prev => prev + 1);
-        
+
         try {
             const prompt = `
             You are an expert EHS (Environment, Health, and Safety) and Operations analyst. Your task is to analyze this video and generate a concise, event-driven chapter timeline.
@@ -169,7 +192,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                
+
                 // Check for video processing errors
                 if (errorData.code === 'video_not_ready' || errorData.code === 'video_not_uploaded') {
                     setError({
@@ -178,18 +201,18 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                     });
                     return;
                 }
-                
+
                 throw new Error(`Failed to fetch timeline data: ${response.status}`);
             }
 
             const data = await response.json();
             console.log("Timeline retry API response:", data);
-            
+
             // Handle the expected data structure
             if ("chapters" in data && Array.isArray(data.chapters)) {
                 const chapters = data.chapters;
                 console.log("Loaded chapters:", chapters.length);
-                
+
                 setChapters(chapters);
                 setError(null); // Clear any previous errors
             } else if (data && typeof data === 'object') {
@@ -201,10 +224,10 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                     });
                     return;
                 }
-                
+
                 // If it's a different structure, try to extract chapters from other possible locations
                 console.warn("Unexpected data structure in retry, attempting to extract chapters:", data);
-                
+
                 // Check if chapters might be in a different property
                 let chapters = null;
                 if (data.data && Array.isArray(data.data)) {
@@ -214,7 +237,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                 } else if (data.result && Array.isArray(data.result)) {
                     chapters = data.result;
                 }
-                
+
                 if (chapters && chapters.length > 0) {
                     console.log("Extracted chapters from alternative structure in retry:", chapters.length);
                     setChapters(chapters);
@@ -239,19 +262,19 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
 
     const startAutoRetry = () => {
         if (isAutoRetrying) return;
-        
+
         setIsAutoRetrying(true);
         setRetryCount(0);
-        
+
         const autoRetry = async () => {
             if (retryCount >= 10) { // Max 10 retries
                 setIsAutoRetrying(false);
                 return;
             }
-            
+
             try {
                 await retryTimeline();
-                
+
                 // If successful, stop auto-retry
                 if (!error) {
                     setIsAutoRetrying(false);
@@ -260,14 +283,14 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
             } catch (error) {
                 console.error("Error during auto-retry", error);
             }
-            
+
             // Wait 5 seconds before next retry
             setTimeout(() => {
                 setRetryCount(prev => prev + 1);
                 autoRetry();
             }, 5000);
         };
-        
+
         autoRetry();
     };
 
@@ -329,20 +352,20 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
 
     if (error) {
         const isProcessingError = error.type === 'video_not_uploaded' || error.type === 'video_not_ready';
-        
+
         return (
             <div className={`bg-white border rounded-xl p-6 shadow-sm ${
-                isProcessingError 
-                    ? error.type === 'video_not_uploaded' 
-                        ? 'border-blue-200' 
+                isProcessingError
+                    ? error.type === 'video_not_uploaded'
+                        ? 'border-blue-200'
                         : 'border-amber-200'
                     : 'border-red-200'
             }`}>
                 <div className="flex items-center space-x-3 mb-4">
                     <DocumentTextIcon className={`w-6 h-6 ${
-                        isProcessingError 
-                            ? error.type === 'video_not_uploaded' 
-                                ? 'text-blue-600' 
+                        isProcessingError
+                            ? error.type === 'video_not_uploaded'
+                                ? 'text-blue-600'
                                 : 'text-amber-600'
                             : 'text-red-600'
                     }`} />
@@ -350,7 +373,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                         Chapter Timeline
                     </h2>
                 </div>
-                
+
                 <div className="text-center py-8">
                     {isProcessingError ? (
                         error.type === 'video_not_uploaded' ? (
@@ -365,31 +388,31 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                     ) : (
                         <ExclamationTriangleIcon className="w-12 h-12 text-red-500 mx-auto mb-4" />
                     )}
-                    
+
                     <p className={`font-medium ${
-                        isProcessingError 
-                            ? error.type === 'video_not_uploaded' 
-                                ? 'text-blue-600' 
+                        isProcessingError
+                            ? error.type === 'video_not_uploaded'
+                                ? 'text-blue-600'
                                 : 'text-amber-600'
                             : 'text-red-600'
                     }`}>
-                        {isProcessingError 
-                            ? error.type === 'video_not_uploaded' 
-                                ? 'Video Being Uploaded' 
+                        {isProcessingError
+                            ? error.type === 'video_not_uploaded'
+                                ? 'Video Being Uploaded'
                                 : 'Video Still Processing'
                             : 'Failed to load timeline'
                         }
                     </p>
                     <p className={`text-sm mt-2 ${
-                        isProcessingError 
-                            ? error.type === 'video_not_uploaded' 
-                                ? 'text-blue-700' 
+                        isProcessingError
+                            ? error.type === 'video_not_uploaded'
+                                ? 'text-blue-700'
                                 : 'text-amber-700'
                             : 'text-gray-600'
                     }`}>
                         {error.message}
                     </p>
-                    
+
                     {/* Auto-retry status for upload/processing errors */}
                     {isProcessingError && (
                         <div className="mt-4">
@@ -408,7 +431,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                             )}
                         </div>
                     )}
-                    
+
                     {/* Action buttons */}
                     <div className="mt-6 flex justify-center gap-3">
                         <button
@@ -433,7 +456,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                                 </>
                             )}
                         </button>
-                        
+
                         {isProcessingError && (
                             <>
                                 {!isAutoRetrying ? (
@@ -499,7 +522,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                 {chapters.map((chapter, index) => {
                     const type = getChapterType(chapter.chapterTitle);
                     const duration = chapter.endSec - chapter.startSec;
-                    
+
                     return (
                         <div
                             key={chapter.chapterNumber}
@@ -539,7 +562,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
                                             {type}
                                         </span>
                                     </div>
-                                    
+
                                     <p className="text-gray-600 text-sm leading-relaxed mb-3">
                                         {chapter.chapterSummary}
                                     </p>
@@ -567,7 +590,7 @@ export default function ChapterTimeline({ videoId, onSeekTo }) {
 
                             {/* Progress Bar */}
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 rounded-b-lg overflow-hidden">
-                                <div 
+                                <div
                                     className={`h-full transition-all duration-300 ${
                                         type === 'safety' ? 'bg-gradient-to-r from-red-500 to-red-400' :
                                         type === 'operational' ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
