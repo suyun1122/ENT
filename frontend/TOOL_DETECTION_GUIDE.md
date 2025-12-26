@@ -279,3 +279,4 @@ For higher accuracy, reduce frame_skip in the API route.
 - **Dataset**: 7 surgical tool classes from laparoscopic cholecystectomy
 - **Framework**: Ultralytics YOLO11
 
+

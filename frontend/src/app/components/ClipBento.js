@@ -81,6 +81,7 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
         if (data.status === "completed") {
           console.log("[Tool Detection] Results found:", data.data);
           setToolDetectionData(data.data);
+          setIsLoadingToolDetection(false);
         } else if (data.status === "not_found") {
           console.log(
             "[Tool Detection] No results found, starting processing..."

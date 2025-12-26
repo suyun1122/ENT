@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Script from "next/script";
 import ClickableVideoButton from "./ClickableVideoButton";
 import ToolDetectionOverlay from "./ToolDetectionOverlay";
 
@@ -17,6 +18,7 @@ export default function ClickableVideo({
 
     const videoRef = useRef(null);
     const [videoTime, setVideoTime] = useState(0);
+    const [hlsLoaded, setHlsLoaded] = useState(false);
 
     useEffect(() => {
 
@@ -24,14 +26,26 @@ export default function ClickableVideo({
 
         const video = videoRef.current;
 
+        console.log('[ClickableVideo] HLS URL:', hlsUrl);
+        console.log('[ClickableVideo] Video element:', video);
+
         if (video && hlsUrl) {
-            if (Hls.isSupported()) {
-                hls = new Hls();
+            if (typeof window !== 'undefined' && window.Hls && window.Hls.isSupported()) {
+                console.log('[ClickableVideo] Using HLS.js');
+                hls = new window.Hls();
                 hls.loadSource(hlsUrl);
                 hls.attachMedia(video);
+                hls.on(window.Hls.Events.ERROR, (event, data) => {
+                    console.error('[ClickableVideo] HLS.js error:', data);
+                });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = video_url;
+                console.log('[ClickableVideo] Using native HLS');
+                video.src = hlsUrl;
+            } else {
+                console.warn('[ClickableVideo] HLS not supported');
             }
+        } else {
+            console.warn('[ClickableVideo] Missing video element or HLS URL');
         }
 
         const handleTimeUpdate = () => {
@@ -52,10 +66,21 @@ export default function ClickableVideo({
             }
         }
 
-    }, [hlsUrl])
+    }, [hlsUrl, hlsLoaded])
 
     return (
-        <div className="relative rounded-lg shadow-lg overflow-hidden" style={{ height: height || 'auto', width: width || '100%' }}>
+        <>
+            <Script
+                src="https://cdn.jsdelivr.net/npm/hls.js@latest"
+                onLoad={() => {
+                    console.log('[ClickableVideo] HLS.js loaded');
+                    setHlsLoaded(true);
+                }}
+                onError={(e) => {
+                    console.error('[ClickableVideo] Failed to load HLS.js:', e);
+                }}
+            />
+            <div className="relative rounded-lg shadow-lg overflow-hidden" style={{ height: height || 'auto', width: width || '100%' }}>
             <video
                 ref={videoRef}
                 className="w-full h-auto"
@@ -99,6 +124,7 @@ export default function ClickableVideo({
                 }) : null}
             </div>
         </div>
+        </>
     )
 
 }
