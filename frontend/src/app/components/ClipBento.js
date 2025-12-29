@@ -77,19 +77,33 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
       setToolDetectionError(null);
 
       try {
-        // Check if detection already exists
+        // 1. First, try to load from static files (pre-deployed detections)
+        console.log('[Tool Detection] Checking static file...');
+        const staticResponse = await fetch(`/detections/${videoId}.json`);
+
+        if (staticResponse.ok) {
+          console.log('[Tool Detection] Loaded from static file');
+          const staticData = await staticResponse.json();
+          setToolDetectionData(staticData);
+          setToolDetectionProgress(100);
+          setToolDetectionStage('completed');
+          setIsLoadingToolDetection(false);
+          return;
+        }
+
+        // 2. Static file not found, check API (Blob storage or processing)
+        console.log('[Tool Detection] Static file not found, checking API...');
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
 
         if (data.status === "completed") {
-          console.log("[Tool Detection] Results found:", data.data);
+          console.log('[Tool Detection] Loaded from API/Blob');
           setToolDetectionData(data.data);
+          setToolDetectionProgress(100);
+          setToolDetectionStage('completed');
           setIsLoadingToolDetection(false);
         } else if (data.status === "not_found") {
-          console.log(
-            "[Tool Detection] No results found, starting processing..."
-          );
-          // Keep loading state true
+          console.log('[Tool Detection] No results found, starting processing...');
           setIsLoadingToolDetection(true);
           // Start processing in background
           const startResponse = await fetch(`/api/detect-tools/${videoId}`, {
@@ -102,7 +116,6 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
           pollToolDetection(videoId);
         } else if (data.status === "processing") {
           console.log("[Tool Detection] Already processing, polling...");
-          // Set loading state to true while polling
           setIsLoadingToolDetection(true);
           pollToolDetection(videoId);
         }
@@ -111,7 +124,6 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
         setToolDetectionError(error.message);
         setIsLoadingToolDetection(false);
       }
-      // Don't set loading to false here if we're starting polling
     };
 
     loadToolDetection();
@@ -302,7 +314,31 @@ Respond with a single valid JSON object in the following format:
       }
 
       const data = await response.json();
-      const parsedData = JSON.parse(data.data || data.response || "{}");
+
+      // TwelveLabs API returns data as a JSON string that needs parsing
+      let parsedData;
+      try {
+        let jsonString = data.data || data.response;
+
+        // Remove markdown code blocks if present (```json ... ```)
+        if (typeof jsonString === 'string') {
+          // Remove markdown code fences
+          jsonString = jsonString
+            .replace(/^```json\s*/i, '')  // Remove opening ```json
+            .replace(/^```\s*/i, '')      // Remove opening ```
+            .replace(/\s*```$/i, '')      // Remove closing ```
+            .trim();
+
+          parsedData = JSON.parse(jsonString);
+        } else {
+          // Already parsed
+          parsedData = jsonString || data;
+        }
+      } catch (parseError) {
+        console.error('[Surgical Analysis] JSON parse error:', parseError);
+        console.error('[Surgical Analysis] Raw data:', data);
+        throw new Error(`Failed to parse surgical analysis: ${parseError.message}`);
+      }
 
       return parsedData;
     },
@@ -384,11 +420,11 @@ Respond with a single valid JSON object in the following format:
     }));
   };
 
-  const mockForensicsData = {
-    compliance: {
-      violations: [
-        {
-          id: 1,
+    const mockForensicsData = {
+        compliance: {
+            violations: [
+                {
+                    id: 1,
           type: "PPE Violation",
           severity: "high",
           description:
@@ -398,9 +434,9 @@ Respond with a single valid JSON object in the following format:
           regulation: "OSHA 1910.132",
           rootCause: "Training Gap",
           potentialFineUSD: 15625,
-        },
-        {
-          id: 2,
+                },
+                {
+                    id: 2,
           type: "Safety Protocol",
           severity: "medium",
           description:
@@ -415,11 +451,11 @@ Respond with a single valid JSON object in the following format:
       scoringMethodology:
         "Base score of 100, with deductions for violations based on severity (High: -15, Medium: -10, Low: -5).",
       score: 75,
-    },
-    riskAssessment: {
+        },
+        riskAssessment: {
       overallSafetyRisk: "medium",
       overallOperationalRisk: "low",
-      riskFactors: [
+            riskFactors: [
         {
           factor: "Lack of Consistent PPE Usage",
           level: "medium",
@@ -436,28 +472,28 @@ Respond with a single valid JSON object in the following format:
           impact: "Workplace Safety",
         },
       ],
-    },
-    correctiveActions: [
-      {
-        violationId: 1,
+        },
+        correctiveActions: [
+            {
+                violationId: 1,
         action:
           "Conduct mandatory refresher training on PPE requirements for all sewing station operators and install a glove dispenser at Station 3.",
         assignee: "Shift Supervisor",
         dueDate: "2025-10-18",
         status: "Pending",
-      },
-      {
-        violationId: 2,
+            },
+            {
+                violationId: 2,
         action:
           "Implement proper lifting technique training and provide mechanical lifting aids.",
         assignee: "Safety Manager",
         dueDate: "2025-10-20",
         status: "In Progress",
       },
-    ],
-    operationalEfficiency: {
-      identifiedWastes: [
-        {
+        ],
+        operationalEfficiency: {
+            identifiedWastes: [
+                {
           type: "Waiting (Muda)",
           timestamp: "00:12",
           description:
@@ -469,17 +505,17 @@ Respond with a single valid JSON object in the following format:
           description:
             "Worker at Assembly Line B has to walk 10 feet to retrieve a tool, which should be located at their station.",
         },
-      ],
-      recommendations: [
+            ],
+            recommendations: [
         "Adjust conveyor belt speed from the primary cutting area to better match the packing station's cycle time.",
         "Implement a 5S program at Assembly Line B to ensure all necessary tools are within arm's reach.",
       ],
-    },
-    summary: {
+        },
+        summary: {
       duration: "00:30",
-      workersPresent: 2,
-      safetyIncidents: 0,
-      keyFindings: [
+            workersPresent: 2,
+            safetyIncidents: 0,
+            keyFindings: [
         "While no injuries occurred, the observed PPE violation at Sewing Station 3 represents a significant and recurring risk.",
         "Analysis of workflow indicates a minor bottleneck causing intermittent downtime at the final packing station.",
       ],

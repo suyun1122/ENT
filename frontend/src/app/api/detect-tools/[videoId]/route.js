@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { TwelveLabs } from 'twelvelabs-js';
+import { put, head } from '@vercel/blob';
 
 const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
 
@@ -21,12 +22,39 @@ export async function GET(request, { params }) {
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
 
-    // Check if results already exist
+    // Check Vercel Blob (production - newly generated detections)
+    // Note: Static files (pre-deployed) are checked by frontend first
+    try {
+        const blobUrl = `detections/${videoId}.json`;
+        const blobHead = await head(blobUrl, {
+            token: process.env.BLOB_READ_WRITE_TOKEN
+        });
+
+        if (blobHead) {
+            // Fetch the data from blob
+            const response = await fetch(blobHead.url);
+            const detectionData = await response.json();
+
+            console.log(`[Detection] Loaded from Vercel Blob: ${videoId}`);
+            return NextResponse.json({
+                status: 'completed',
+                videoId: videoId,
+                data: detectionData
+            });
+        }
+    } catch (blobError) {
+        // Blob not found, will check local file system for development
+        console.log(`[Detection] Blob not found for ${videoId}, checking local...`);
+    }
+
+    // Fallback to local file system (development only)
+    // In production, static files are served directly by Vercel CDN
     const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
 
     if (fs.existsSync(detectionPath)) {
         try {
             const detectionData = JSON.parse(fs.readFileSync(detectionPath, 'utf-8'));
+            console.log(`[Detection] Loaded from local file system: ${videoId}`);
             return NextResponse.json({
                 status: 'completed',
                 videoId: videoId,
@@ -77,9 +105,30 @@ export async function POST(request, { params }) {
         });
     }
 
-    // Check if results already exist
+    // Check if results already exist in Vercel Blob (newly generated)
+    // Note: Frontend checks static files first, so this only checks Blob
+    try {
+        const blobUrl = `detections/${videoId}.json`;
+        const blobHead = await head(blobUrl, {
+            token: process.env.BLOB_READ_WRITE_TOKEN
+        });
+
+        if (blobHead) {
+            console.log(`[Detection] Already exists in Blob: ${videoId}`);
+            return NextResponse.json({
+                status: 'completed',
+                videoId: videoId,
+                message: 'Detection already completed. Use GET to retrieve results.'
+            });
+        }
+    } catch (blobError) {
+        // Continue if not found in Blob
+    }
+
+    // Check local file system (development only)
     const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
     if (fs.existsSync(detectionPath)) {
+        console.log(`[Detection] Already exists in local file system: ${videoId}`);
         return NextResponse.json({
             status: 'completed',
             videoId: videoId,
@@ -163,6 +212,21 @@ async function processVideoDetection(videoId) {
 
         // Update status
         processingStatus.set(videoId, { progress: 95, stage: 'finalizing' });
+
+        // Upload results to Vercel Blob (production)
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const detectionData = JSON.parse(fs.readFileSync(outputPath, 'utf-8'));
+                const blob = await put(`detections/${videoId}.json`, JSON.stringify(detectionData), {
+                    access: 'public',
+                    token: process.env.BLOB_READ_WRITE_TOKEN,
+                });
+                console.log(`[Detection] Uploaded to Vercel Blob: ${blob.url}`);
+            } catch (uploadError) {
+                console.error('[Detection] Failed to upload to Vercel Blob:', uploadError);
+                // Continue anyway - local file exists
+            }
+        }
 
         // Note: We don't clean up the video file since we're using local files from runs/
 
