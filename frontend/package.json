@@ -12,6 +12,7 @@
     "@aws-sdk/client-s3": "^3.890.0",
     "@aws-sdk/s3-request-presigner": "^3.890.0",
     "@heroicons/react": "^2.2.0",
+    "@tanstack/react-query": "^5.90.12",
     "aws-sdk": "^2.1692.0",
     "hls.js": "^0.8.5",
     "next": "15.5.3",

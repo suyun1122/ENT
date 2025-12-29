@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Compliance with PPE Regulations",
+    "description": "Throughout the video, all medical personnel are observed wearing appropriate personal protective equipment (PPE), including masks, gloves, and surgical gowns. This adherence to PPE regulations is critical for maintaining a sterile environment and preventing infections. However, continuous monitoring is recommended to ensure ongoing compliance.",
+    "category": "compliance",
+    "x": 50,
+    "y": 50,
+    "start": 0,
+    "end": 894,
+    "link": "https://www.cdc.gov/hai/prevent/ppe.html"
+  },
+  {
+    "title": "Efficiency Improvement: Workflow Optimization",
+    "description": "Midway through the video, there are several instances where multiple staff members are simultaneously working on different tasks. While teamwork is evident, there may be opportunities to streamline the workflow to reduce the time spent on each task and improve overall efficiency. Consider implementing a more structured workflow plan.",
+    "category": "improvement",
+    "x": 50,
+    "y": 50,
+    "start": 447,
+    "end": 672,
+    "link": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6528027/"
+  },
+  {
+    "title": "Enhanced Communication",
+    "description": "Towards the end of the video, surgeons are seen conversing while looking at something off-screen. While communication is essential, it is important to ensure that all team members are fully engaged and aware of the ongoing procedures. Implementing a more structured communication protocol could enhance coordination and reduce the risk of errors.",
+    "category": "improvement",
+    "x": 50,
+    "y": 50,
+    "start": 732,
+    "end": 894,
+    "link": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4446328/"
+  }
+]

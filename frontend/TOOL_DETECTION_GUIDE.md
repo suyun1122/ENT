@@ -280,3 +280,5 @@ For higher accuracy, reduce frame_skip in the API route.
 - **Framework**: Ultralytics YOLO11
 
 
+
+

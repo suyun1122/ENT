@@ -9,38 +9,38 @@ export async function POST(request) {
     const { userQuery, videoId } = await request.json();
 
     try {
-
+        // Call TwelveLabs API (caching is handled by TanStack Query on the client)
         const response = await twelvelabs_client.analyze({
             videoId: videoId,
             prompt: userQuery,
             temperature: 0.2
-        })
+        });
 
         return new Response(JSON.stringify(response), { status: 200 });
 
     } catch (error) {
         console.error("Error during analysis", error);
-        
+
         // Check if it's a video_not_ready error from TwelveLabs
         if (error.message && error.message.includes('video_not_ready')) {
-            return new Response(JSON.stringify({ 
+            return new Response(JSON.stringify({
                 code: 'video_not_ready',
                 message: 'The video is still being indexed. Please try again once the indexing process is complete.'
             }), { status: 202 }); // 202 Accepted - request accepted but processing not complete
         }
-        
+
         // Check if it's a parameter_invalid error (video not in index yet)
-        if (error.body && error.body.code === 'parameter_invalid' && 
+        if (error.body && error.body.code === 'parameter_invalid' &&
             error.body.message && error.body.message.includes('video_id parameter is invalid')) {
-            return new Response(JSON.stringify({ 
+            return new Response(JSON.stringify({
                 code: 'video_not_uploaded',
                 message: 'The video is still being uploaded and processed. Please wait for the upload to complete.'
             }), { status: 202 }); // 202 Accepted - request accepted but processing not complete
         }
-        
-        return new Response(JSON.stringify({ 
+
+        return new Response(JSON.stringify({
             code: 'analysis_error',
-            error: 'Error during analysis' 
+            error: 'Error during analysis'
         }), { status: 500 });
     }
 }

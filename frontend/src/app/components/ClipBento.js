@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
@@ -33,16 +34,16 @@ const DEFAULT_LON = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_LON || "");
 const HAS_DEFAULT_GEO =
   Number.isFinite(DEFAULT_LAT) && Number.isFinite(DEFAULT_LON);
 const DEFAULT_GEOLOCATION = HAS_DEFAULT_GEO
-  ? { coords: { latitude: DEFAULT_LAT, longitude: DEFAULT_LON } }
-  : null;
+    ? { coords: { latitude: DEFAULT_LAT, longitude: DEFAULT_LON } }
+    : null;
 
 export default function ClipBento({ clipData, buttonMetadata, videoId }) {
   const [operatingNote, setOperatingNote] = useState(null);
   const [chapters, setChapters] = useState(null);
-  const [forensicsData, setForensicsData] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [reportGenerated, setReportGenerated] = useState(false);
-  const [correctiveActionStatuses, setCorrectiveActionStatuses] = useState({});
+    const [forensicsData, setForensicsData] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [reportGenerated, setReportGenerated] = useState(false);
+    const [correctiveActionStatuses, setCorrectiveActionStatuses] = useState({});
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const [chaptersError, setChaptersError] = useState(null);
   const [isEditingSOAP, setIsEditingSOAP] = useState({
@@ -64,6 +65,8 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
   const [toolDetectionError, setToolDetectionError] = useState(null);
   const [showToolDetection, setShowToolDetection] = useState(true);
   const [enabledTools, setEnabledTools] = useState(null); // null means all enabled
+  const [toolDetectionProgress, setToolDetectionProgress] = useState(0);
+  const [toolDetectionStage, setToolDetectionStage] = useState('initializing');
 
   // Auto-load tool detection when videoId is available
   useEffect(() => {
@@ -127,6 +130,8 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
         if (data.status === "completed") {
           console.log("[Tool Detection] Processing complete!");
           setToolDetectionData(data.data);
+          setToolDetectionProgress(100);
+          setToolDetectionStage('completed');
           setIsLoadingToolDetection(false);
           return;
         } else if (data.status === "error") {
@@ -134,6 +139,11 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
           setToolDetectionError(data.error);
           setIsLoadingToolDetection(false);
           return;
+        } else if (data.status === "processing") {
+          // Update progress from server
+          console.log(`[Tool Detection] Progress: ${data.progress}%, Stage: ${data.stage}`);
+          setToolDetectionProgress(data.progress || 0);
+          setToolDetectionStage(data.stage || 'processing');
         }
 
         attempts++;
@@ -172,17 +182,8 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     });
   };
 
-  // Auto-load surgical analysis (chapters + operative note) when videoId is available
-  useEffect(() => {
-    const loadSurgicalAnalysis = async () => {
-      if (!videoId) return;
-
-      setIsLoadingChapters(true);
-      setIsLoading(true);
-      setChaptersError(null);
-
-      try {
-        const prompt = `You are analyzing a full-length surgical video.
+  // Surgical analysis prompt (constant)
+  const surgicalAnalysisPrompt = `You are analyzing a full-length surgical video.
 
 This task is for EDUCATIONAL and DEMONSTRATION purposes only.
 The output is a video-derived operative summary and is NOT a substitute for a clinical operative report.
@@ -276,42 +277,61 @@ Respond with a single valid JSON object in the following format:
 - Do NOT over-summarize or embellish.
 - Clarity and safety take precedence over completeness.`;
 
-        const response = await fetch("/api/analysis", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            videoId: videoId,
-            userQuery: prompt,
-          }),
-        });
+  // Use TanStack Query for surgical analysis with automatic caching
+  const {
+    data: surgicalAnalysisData,
+    isLoading: isLoadingSurgicalAnalysis,
+    error: surgicalAnalysisError,
+  } = useQuery({
+    queryKey: ['surgicalAnalysis', videoId],
+    queryFn: async () => {
+      if (!videoId) return null;
 
-        if (!response.ok) {
-          throw new Error("Failed to load surgical analysis");
-        }
+      console.log('[Surgical Analysis] Fetching analysis for video', videoId);
+      const response = await fetch("/api/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId: videoId,
+          userQuery: surgicalAnalysisPrompt,
+        }),
+      });
 
-        const data = await response.json();
-        const parsedData = JSON.parse(data.data || data.response || "{}");
-
-        if (parsedData.chapters) {
-          setChapters(parsedData.chapters);
-        }
-
-        if (parsedData.operative_note) {
-          setOperatingNote(parsedData.operative_note);
-        }
-
-        setReportGenerated(true);
-      } catch (error) {
-        console.error("Error loading surgical analysis:", error);
-        setChaptersError(error.message);
-      } finally {
-        setIsLoadingChapters(false);
-        setIsLoading(false);
+      if (!response.ok) {
+        throw new Error("Failed to load surgical analysis");
       }
-    };
 
-    loadSurgicalAnalysis();
-  }, [videoId]);
+      const data = await response.json();
+      const parsedData = JSON.parse(data.data || data.response || "{}");
+
+      return parsedData;
+    },
+    enabled: !!videoId, // Only run if videoId exists
+    staleTime: 60 * 60 * 1000, // Consider data fresh for 1 hour
+    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
+  });
+
+  // Update state when query data changes
+  useEffect(() => {
+    if (surgicalAnalysisData) {
+      if (surgicalAnalysisData.chapters) {
+        setChapters(surgicalAnalysisData.chapters);
+      }
+      if (surgicalAnalysisData.operative_note) {
+        setOperatingNote(surgicalAnalysisData.operative_note);
+      }
+      setReportGenerated(true);
+    }
+  }, [surgicalAnalysisData]);
+
+  // Sync loading and error states
+  useEffect(() => {
+    setIsLoadingChapters(isLoadingSurgicalAnalysis);
+    setIsLoading(isLoadingSurgicalAnalysis);
+    if (surgicalAnalysisError) {
+      setChaptersError(surgicalAnalysisError.message);
+    }
+  }, [isLoadingSurgicalAnalysis, surgicalAnalysisError]);
 
   // Initialize edited SOAP when operating note is loaded
   useEffect(() => {
@@ -466,37 +486,37 @@ Respond with a single valid JSON object in the following format:
     },
   };
 
-  const exportToPDF = () => {
-    // In real implementation, this would generate and download a PDF
+    const exportToPDF = () => {
+        // In real implementation, this would generate and download a PDF
     const element = document.createElement("a");
     const file = new Blob(
       ["Compliance Report PDF content would be generated here"],
       { type: "application/pdf" }
     );
-    element.href = URL.createObjectURL(file);
+        element.href = URL.createObjectURL(file);
     element.download = `compliance-report-${
       new Date().toISOString().split("T")[0]
     }.pdf`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+    };
 
-  const exportToCSV = () => {
-    // Generate CSV content from forensics data
-    const csvContent = generateCSVContent();
+    const exportToCSV = () => {
+        // Generate CSV content from forensics data
+        const csvContent = generateCSVContent();
     const element = document.createElement("a");
     const file = new Blob([csvContent], { type: "text/csv" });
-    element.href = URL.createObjectURL(file);
+        element.href = URL.createObjectURL(file);
     element.download = `compliance-report-${
       new Date().toISOString().split("T")[0]
     }.csv`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+    };
 
-  const generateCSVContent = () => {
+    const generateCSVContent = () => {
     if (!forensicsData) return "";
 
     let csv = "Compliance Report\n\n";
@@ -510,8 +530,8 @@ Respond with a single valid JSON object in the following format:
     csv +=
       "ID,Type,Severity,Description,Timestamp,Location,Regulation,Root Cause,Potential Fine (USD)\n";
     forensicsData.compliance.violations.forEach((violation) => {
-      csv += `"${violation.id}","${violation.type}","${violation.severity}","${violation.description}","${violation.timestamp}","${violation.location}","${violation.regulation}","${violation.rootCause}","${violation.potentialFineUSD}"\n`;
-    });
+            csv += `"${violation.id}","${violation.type}","${violation.severity}","${violation.description}","${violation.timestamp}","${violation.location}","${violation.regulation}","${violation.rootCause}","${violation.potentialFineUSD}"\n`;
+        });
 
     csv += "\nRisk Assessment\n";
     csv +=
@@ -524,25 +544,25 @@ Respond with a single valid JSON object in the following format:
       "\n";
     csv += "Factor,Level,Impact\n";
     forensicsData.riskAssessment.riskFactors.forEach((factor) => {
-      csv += `"${factor.factor}","${factor.level}","${factor.impact}"\n`;
-    });
+            csv += `"${factor.factor}","${factor.level}","${factor.impact}"\n`;
+        });
 
     csv += "\nCorrective Actions\n";
     csv += "Violation ID,Action,Assignee,Due Date,Status\n";
     forensicsData.correctiveActions.forEach((action) => {
-      csv += `"${action.violationId}","${action.action}","${action.assignee}","${action.dueDate}","${action.status}"\n`;
-    });
+            csv += `"${action.violationId}","${action.action}","${action.assignee}","${action.dueDate}","${action.status}"\n`;
+        });
 
     csv += "\nOperational Efficiency\n";
     csv += "Waste Type,Timestamp,Description\n";
     forensicsData.operationalEfficiency.identifiedWastes.forEach((waste) => {
-      csv += `"${waste.type}","${waste.timestamp}","${waste.description}"\n`;
-    });
+            csv += `"${waste.type}","${waste.timestamp}","${waste.description}"\n`;
+        });
 
     csv += "\nRecommendations\n";
     forensicsData.operationalEfficiency.recommendations.forEach((rec) => {
-      csv += `"${rec}"\n`;
-    });
+            csv += `"${rec}"\n`;
+        });
 
     csv += "\nSummary\n";
     csv += "Duration," + forensicsData.summary.duration + "\n";
@@ -551,13 +571,13 @@ Respond with a single valid JSON object in the following format:
 
     csv += "\nKey Findings\n";
     forensicsData.summary.keyFindings.forEach((finding) => {
-      csv += `"${finding}"\n`;
-    });
+            csv += `"${finding}"\n`;
+        });
 
-    return csv;
-  };
+        return csv;
+    };
 
-  const getSeverityColor = (severity) => {
+    const getSeverityColor = (severity) => {
     switch (severity) {
       case "high":
         return "text-red-600 bg-red-50 border-red-200";
@@ -567,10 +587,10 @@ Respond with a single valid JSON object in the following format:
         return "text-green-600 bg-green-50 border-green-200";
       default:
         return "text-gray-600 bg-gray-50 border-gray-200";
-    }
-  };
+        }
+    };
 
-  const getRiskLevelColor = (level) => {
+    const getRiskLevelColor = (level) => {
     switch (level) {
       case "high":
         return "text-red-600";
@@ -580,10 +600,10 @@ Respond with a single valid JSON object in the following format:
         return "text-green-600";
       default:
         return "text-gray-600";
-    }
-  };
+        }
+    };
 
-  const getEventTypeIcon = (type) => {
+    const getEventTypeIcon = (type) => {
     switch (type) {
       case "warning":
         return <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500" />;
@@ -593,10 +613,10 @@ Respond with a single valid JSON object in the following format:
         return <XCircleIcon className="h-4 w-4 text-red-500" />;
       default:
         return <ClockIcon className="h-4 w-4 text-gray-500" />;
-    }
-  };
+        }
+    };
 
-  const getActionStatusColor = (status) => {
+    const getActionStatusColor = (status) => {
     switch (status) {
       case "Approved":
         return "text-green-600 bg-green-50 border-green-200";
@@ -612,10 +632,10 @@ Respond with a single valid JSON object in the following format:
         return "text-red-600 bg-red-50 border-red-200";
       default:
         return "text-gray-600 bg-gray-50 border-gray-200";
-    }
-  };
+        }
+    };
 
-  const getWasteTypeColor = (type) => {
+    const getWasteTypeColor = (type) => {
     switch (type) {
       case "Waiting (Muda)":
         return "text-orange-600 bg-orange-50 border-orange-200";
@@ -633,33 +653,33 @@ Respond with a single valid JSON object in the following format:
         return "text-teal-600 bg-teal-50 border-teal-200";
       default:
         return "text-gray-600 bg-gray-50 border-gray-200";
-    }
-  };
+        }
+    };
 
-  const handleActionApproval = (actionIndex, status) => {
+    const handleActionApproval = (actionIndex, status) => {
     setCorrectiveActionStatuses((prev) => ({
-      ...prev,
+            ...prev,
       [actionIndex]: status,
-    }));
-  };
+        }));
+    };
 
-  const getActionStatus = (actionIndex, originalStatus) => {
-    return correctiveActionStatuses[actionIndex] || originalStatus;
-  };
+    const getActionStatus = (actionIndex, originalStatus) => {
+        return correctiveActionStatuses[actionIndex] || originalStatus;
+    };
 
-  return (
-    <div className="w-full space-y-6">
-      {/* Video and Chat Section */}
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Video Section */}
+    return (
+        <div className="w-full space-y-6">
+            {/* Video and Chat Section */}
+            <div className="flex flex-col lg:flex-row gap-6">
+                {/* Video Section */}
         <div className="w-full lg:w-1/2 space-y-4">
-          {clipData && (
-            <ClickableVideo
-              hlsUrl={clipData.hls?.video_url}
-              thumbnailUrl={clipData.hls?.thumbnail_urls?.[0]}
-              height={null}
-              width={null}
-              button_metadata={buttonMetadata}
+                    {clipData && (
+                        <ClickableVideo
+                            hlsUrl={clipData.hls?.video_url}
+                            thumbnailUrl={clipData.hls?.thumbnail_urls?.[0]}
+                            height={null}
+                            width={null}
+                            button_metadata={buttonMetadata}
               toolDetectionData={toolDetectionData}
               showToolDetection={showToolDetection}
               enabledTools={enabledTools}
@@ -693,13 +713,13 @@ Respond with a single valid JSON object in the following format:
                           Progress
                         </span>
                         <span className="text-emerald-600 font-semibold">
-                          ~1-2 minutes
+                          {toolDetectionProgress}% - {toolDetectionStage}
                         </span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
                         <div
-                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full animate-pulse"
-                          style={{ width: "40%" }}
+                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${toolDetectionProgress}%` }}
                         ></div>
                       </div>
                       <p className="text-xs text-gray-500 italic">
@@ -757,13 +777,13 @@ Respond with a single valid JSON object in the following format:
               </div>
             )}
           </div>
-        </div>
+                </div>
 
-        {/* Chat Section */}
-        <div className="w-full lg:w-1/2">
-          <ClipChat videoId={videoId} />
-        </div>
-      </div>
+                {/* Chat Section */}
+                <div className="w-full lg:w-1/2">
+                    <ClipChat videoId={videoId} />
+                </div>
+            </div>
 
       {/* Surgical Phase Timeline */}
       <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 shadow-lg">
@@ -837,59 +857,59 @@ Respond with a single valid JSON object in the following format:
         )}
       </div>
 
-      {/* Forensics Details Panel */}
-      <div className="w-full">
-        <div className="bg-white/80 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200/50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-gradient-to-br from-emerald-500 to-lime-600 rounded-lg">
+            {/* Forensics Details Panel */}
+            <div className="w-full">
+                <div className="bg-white/80 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
+                    {/* Header */}
+                    <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200/50">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <div className="p-2 bg-gradient-to-br from-emerald-500 to-lime-600 rounded-lg">
                   <DocumentTextIcon className="h-6 w-6 text-white" />
-                </div>
-                <div>
+                                </div>
+                                <div>
                   <h2 className="text-xl font-bold text-gray-900">SOAP Note</h2>
                   <p className="text-sm text-gray-600">
                     Subjective, Objective, Assessment & Plan
                   </p>
-                </div>
-              </div>
+                                </div>
+                            </div>
               {operatingNote && operatingNote.SOAP && (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={exportToPDF}
-                    className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                  >
-                    <ArrowDownTrayIcon className="h-4 w-4" />
-                    <span className="text-sm font-medium">PDF</span>
-                  </button>
-                  <button
-                    onClick={exportToCSV}
-                    className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                  >
-                    <ArrowDownTrayIcon className="h-4 w-4" />
-                    <span className="text-sm font-medium">CSV</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+                                        <div className="flex items-center space-x-2">
+                                            <button
+                                                onClick={exportToPDF}
+                                                className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                            >
+                                                <ArrowDownTrayIcon className="h-4 w-4" />
+                                                <span className="text-sm font-medium">PDF</span>
+                                            </button>
+                                            <button
+                                                onClick={exportToCSV}
+                                                className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                            >
+                                                <ArrowDownTrayIcon className="h-4 w-4" />
+                                                <span className="text-sm font-medium">CSV</span>
+                                            </button>
+                                        </div>
+                                )}
+                        </div>
+                    </div>
 
-          {isLoading ? (
-            <div className="p-8 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto"></div>
+                    {isLoading ? (
+                        <div className="p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto"></div>
               <p className="mt-4 text-gray-600">
                 Analyzing surgical video with TwelveLabs Pegasus...
               </p>
-            </div>
+                        </div>
           ) : !operatingNote ? (
-            <div className="p-8 text-center">
-              <div className="mb-6">
-                <DocumentTextIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                        <div className="p-8 text-center">
+                            <div className="mb-6">
+                                <DocumentTextIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-700 mb-2">
                   Loading SOAP Note...
                 </h3>
-                <p className="text-gray-500 max-w-md mx-auto">
+                                <p className="text-gray-500 max-w-md mx-auto">
                   Analyzing surgical video to generate operative note.
                 </p>
               </div>
@@ -949,7 +969,7 @@ Respond with a single valid JSON object in the following format:
                           className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-emerald-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white min-h-[100px]"
                         />
                       )}
-                    </div>
+                            </div>
 
                     {/* Objective */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
@@ -984,9 +1004,9 @@ Respond with a single valid JSON object in the following format:
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
                             </button>
-                          </div>
+                                </div>
                         )}
-                      </div>
+                                </div>
                       {!isEditingSOAP.Objective ? (
                         <p className="text-sm text-gray-800 leading-relaxed pl-10">
                           {operatingNote.SOAP.Objective}
@@ -1000,7 +1020,7 @@ Respond with a single valid JSON object in the following format:
                           className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[150px]"
                         />
                       )}
-                    </div>
+                                </div>
 
                     {/* Assessment */}
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
@@ -1035,9 +1055,9 @@ Respond with a single valid JSON object in the following format:
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
                             </button>
-                          </div>
+                            </div>
                         )}
-                      </div>
+                        </div>
                       {!isEditingSOAP.Assessment ? (
                         <p className="text-sm text-gray-800 leading-relaxed pl-10">
                           {operatingNote.SOAP.Assessment}
@@ -1108,26 +1128,26 @@ Respond with a single valid JSON object in the following format:
               )}
             </div>
           ) : forensicsData ? (
-            <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6">
               {/* Legacy Forensics View - kept for backward compatibility */}
-              {/* 1. COMPLIANCE VIOLATIONS - Most Critical for Factory Managers */}
-              <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-6 border border-red-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                    <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
-                    <span>Compliance Violations</span>
-                  </h3>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-red-600">
-                        {forensicsData?.compliance.score || 0}%
-                      </div>
+                            {/* 1. COMPLIANCE VIOLATIONS - Most Critical for Factory Managers */}
+                            <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-6 border border-red-100">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                                        <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
+                                        <span>Compliance Violations</span>
+                                    </h3>
+                                    <div className="flex items-center space-x-4">
+                                        <div className="text-right">
+                                            <div className="text-2xl font-bold text-red-600">
+                                                {forensicsData?.compliance.score || 0}%
+                                            </div>
                       <div className="text-sm text-gray-600">
                         Compliance Score
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-red-600">
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-lg font-bold text-red-600">
                         $
                         {forensicsData?.compliance.violations
                           ?.reduce(
@@ -1135,37 +1155,37 @@ Respond with a single valid JSON object in the following format:
                             0
                           )
                           .toLocaleString() || 0}
-                      </div>
+                                            </div>
                       <div className="text-sm text-gray-600">
                         Potential Fines
                       </div>
-                    </div>
-                  </div>
-                </div>
+                                        </div>
+                                    </div>
+                                </div>
 
-                <div className="mb-4 p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-red-200/50">
-                  <p className="text-sm text-gray-700">
+                                <div className="mb-4 p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-red-200/50">
+                                    <p className="text-sm text-gray-700">
                     <strong>Scoring Methodology:</strong>{" "}
                     {forensicsData?.compliance.scoringMethodology}
-                  </p>
-                </div>
+                                    </p>
+                                </div>
 
-                <div className="space-y-3">
-                  {forensicsData?.compliance.violations.map((violation) => (
+                                <div className="space-y-3">
+                                    {forensicsData?.compliance.violations.map((violation) => (
                     <div
                       key={violation.id}
                       className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-red-200/50"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-2 mb-2">
                             <span
                               className={`px-2 py-1 rounded-full text-xs font-medium border ${getSeverityColor(
                                 violation.severity
                               )}`}
                             >
-                              {violation.severity.toUpperCase()}
-                            </span>
+                                                            {violation.severity.toUpperCase()}
+                                                        </span>
                             <span className="text-sm text-gray-600">
                               {violation.timestamp}
                             </span>
@@ -1175,11 +1195,11 @@ Respond with a single valid JSON object in the following format:
                             <span className="text-sm font-bold text-red-600">
                               ${violation.potentialFineUSD?.toLocaleString()}
                             </span>
-                          </div>
+                                                    </div>
                           <p className="text-sm text-gray-800 mb-2">
                             {violation.description}
                           </p>
-                          <div className="flex items-center space-x-4 text-xs text-gray-600">
+                                                    <div className="flex items-center space-x-4 text-xs text-gray-600">
                             <span>
                               <strong>Regulation:</strong>{" "}
                               {violation.regulation}
@@ -1187,282 +1207,282 @@ Respond with a single valid JSON object in the following format:
                             <span>
                               <strong>Root Cause:</strong> {violation.rootCause}
                             </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
 
-              {/* 2. CORRECTIVE ACTIONS - Actionable Items */}
-              <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-100">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                  <ClipboardDocumentListIcon className="h-5 w-5 text-emerald-500" />
-                  <span>Corrective Actions</span>
-                </h3>
+                            {/* 2. CORRECTIVE ACTIONS - Actionable Items */}
+                            <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-100">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
+                                    <ClipboardDocumentListIcon className="h-5 w-5 text-emerald-500" />
+                                    <span>Corrective Actions</span>
+                                </h3>
 
-                <div className="space-y-3">
-                  {forensicsData?.correctiveActions.map((action, index) => {
-                    const currentStatus = getActionStatus(index, action.status);
-                    return (
+                                <div className="space-y-3">
+                                    {forensicsData?.correctiveActions.map((action, index) => {
+                                        const currentStatus = getActionStatus(index, action.status);
+                                        return (
                       <div
                         key={index}
                         className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50"
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div className="flex-1">
                             <p className="text-sm text-gray-800 mb-2">
                               {action.action}
                             </p>
-                            <div className="flex items-center space-x-4 text-xs text-gray-600">
-                              <span className="flex items-center space-x-1">
-                                <UserIcon className="h-3 w-3" />
+                                                        <div className="flex items-center space-x-4 text-xs text-gray-600">
+                                                            <span className="flex items-center space-x-1">
+                                                                <UserIcon className="h-3 w-3" />
                                 <span>
                                   <strong>Assignee:</strong> {action.assignee}
                                 </span>
-                              </span>
-                              <span className="flex items-center space-x-1">
-                                <CalendarDaysIcon className="h-3 w-3" />
+                                                            </span>
+                                                            <span className="flex items-center space-x-1">
+                                                                <CalendarDaysIcon className="h-3 w-3" />
                                 <span>
                                   <strong>Due:</strong> {action.dueDate}
-                                </span>
+                                                            </span>
                               </span>
                               <span>
                                 <strong>Violation ID:</strong>{" "}
                                 {action.violationId}
                               </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end space-y-2">
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end space-y-2">
                             <span
                               className={`px-2 py-1 rounded-full text-xs font-medium border ${getActionStatusColor(
                                 currentStatus
                               )}`}
                             >
-                              {currentStatus}
-                            </span>
+                                                            {currentStatus}
+                                                        </span>
                             {currentStatus === "Pending" && (
-                              <div className="flex space-x-2">
-                                <button
+                                                            <div className="flex space-x-2">
+                                                                <button
                                   onClick={() =>
                                     handleActionApproval(index, "Approved")
                                   }
-                                  className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-medium rounded-md border border-green-200 transition-colors duration-200 flex items-center space-x-1"
-                                >
-                                  <CheckCircleIcon className="h-3 w-3" />
-                                  <span>Approve</span>
-                                </button>
-                                <button
+                                                                    className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-medium rounded-md border border-green-200 transition-colors duration-200 flex items-center space-x-1"
+                                                                >
+                                                                    <CheckCircleIcon className="h-3 w-3" />
+                                                                    <span>Approve</span>
+                                                                </button>
+                                                                <button
                                   onClick={() =>
                                     handleActionApproval(index, "Declined")
                                   }
-                                  className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-medium rounded-md border border-red-200 transition-colors duration-200 flex items-center space-x-1"
-                                >
-                                  <XCircleIcon className="h-3 w-3" />
-                                  <span>Decline</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                                                                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-medium rounded-md border border-red-200 transition-colors duration-200 flex items-center space-x-1"
+                                                                >
+                                                                    <XCircleIcon className="h-3 w-3" />
+                                                                    <span>Decline</span>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
 
-              {/* 3. RISK ASSESSMENT - Safety & Operational Risk */}
-              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-6 border border-yellow-100">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                  <ChartBarIcon className="h-5 w-5 text-yellow-500" />
-                  <span>Risk Assessment</span>
-                </h3>
+                            {/* 3. RISK ASSESSMENT - Safety & Operational Risk */}
+                            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-6 border border-yellow-100">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
+                                    <ChartBarIcon className="h-5 w-5 text-yellow-500" />
+                                    <span>Risk Assessment</span>
+                                </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <ShieldCheckIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <ShieldCheckIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
                     <div className="text-lg font-bold text-gray-900 capitalize">
                       {forensicsData?.riskAssessment.overallSafetyRisk}
                     </div>
-                    <div className="text-xs text-gray-600">Safety Risk</div>
-                  </div>
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <CogIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                                        <div className="text-xs text-gray-600">Safety Risk</div>
+                                    </div>
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <CogIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                     <div className="text-lg font-bold text-gray-900 capitalize">
                       {forensicsData?.riskAssessment.overallOperationalRisk}
                     </div>
                     <div className="text-xs text-gray-600">
                       Operational Risk
                     </div>
-                  </div>
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
+                                    </div>
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <ExclamationTriangleIcon className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
                     <div className="text-lg font-bold text-gray-900">
                       {forensicsData?.riskAssessment.riskFactors?.length || 0}
                     </div>
-                    <div className="text-xs text-gray-600">Risk Factors</div>
-                  </div>
-                </div>
+                                        <div className="text-xs text-gray-600">Risk Factors</div>
+                                    </div>
+                                </div>
 
-                <div>
+                                <div>
                   <h4 className="font-medium text-gray-800 mb-3">
                     Risk Factors
                   </h4>
-                  <div className="space-y-2">
+                                    <div className="space-y-2">
                     {forensicsData?.riskAssessment.riskFactors.map(
                       (factor, index) => (
                         <div
                           key={index}
                           className="flex items-center justify-between bg-white/70 backdrop-blur-sm rounded-lg p-3"
                         >
-                          <div>
+                                                <div>
                             <p className="text-sm font-medium text-gray-800">
                               {factor.factor}
                             </p>
                             <p className="text-xs text-gray-600">
                               {factor.impact}
                             </p>
-                          </div>
+                                                </div>
                           <span
                             className={`text-sm font-medium ${getRiskLevelColor(
                               factor.level
                             )}`}
                           >
-                            {factor.level.toUpperCase()}
-                          </span>
-                        </div>
+                                                    {factor.level.toUpperCase()}
+                                                </span>
+                                            </div>
                       )
                     )}
-                  </div>
-                </div>
-              </div>
+                                    </div>
+                                </div>
+                            </div>
 
-              {/* 4. OPERATIONAL EFFICIENCY - Lean Manufacturing Focus */}
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                  <WrenchScrewdriverIcon className="h-5 w-5 text-purple-500" />
-                  <span>Operational Efficiency</span>
-                </h3>
+                            {/* 4. OPERATIONAL EFFICIENCY - Lean Manufacturing Focus */}
+                            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
+                                    <WrenchScrewdriverIcon className="h-5 w-5 text-purple-500" />
+                                    <span>Operational Efficiency</span>
+                                </h3>
 
-                <div className="space-y-4">
-                  <div>
+                                <div className="space-y-4">
+                                    <div>
                     <h4 className="font-medium text-gray-800 mb-3">
                       Identified Wastes (7 Wastes of Lean)
                     </h4>
-                    <div className="space-y-2">
+                                        <div className="space-y-2">
                       {forensicsData?.operationalEfficiency.identifiedWastes.map(
                         (waste, index) => (
                           <div
                             key={index}
                             className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border border-purple-200/50"
                           >
-                            <div className="flex items-start justify-between mb-1">
+                                                    <div className="flex items-start justify-between mb-1">
                               <span
                                 className={`px-2 py-1 rounded-full text-xs font-medium border ${getWasteTypeColor(
                                   waste.type
                                 )}`}
                               >
-                                {waste.type}
-                              </span>
+                                                            {waste.type}
+                                                        </span>
                               <span className="text-xs text-gray-500">
                                 {waste.timestamp}
                               </span>
-                            </div>
+                                                    </div>
                             <p className="text-sm text-gray-800">
                               {waste.description}
                             </p>
-                          </div>
+                                                </div>
                         )
                       )}
-                    </div>
-                  </div>
+                                        </div>
+                                    </div>
 
-                  <div>
+                                    <div>
                     <h4 className="font-medium text-gray-800 mb-3">
                       Recommendations
                     </h4>
-                    <div className="space-y-2">
+                                        <div className="space-y-2">
                       {forensicsData?.operationalEfficiency.recommendations.map(
                         (rec, index) => (
                           <div
                             key={index}
                             className="flex items-start space-x-2 bg-white/70 backdrop-blur-sm rounded-lg p-3"
                           >
-                            <LightBulbIcon className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
-                            <p className="text-sm text-gray-800">{rec}</p>
-                          </div>
+                                                    <LightBulbIcon className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
+                                                    <p className="text-sm text-gray-800">{rec}</p>
+                                                </div>
                         )
                       )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-              {/* 5. SUMMARY & METRICS - Overview */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                  <DocumentTextIcon className="h-5 w-5 text-blue-500" />
-                  <span>Summary & Metrics</span>
-                </h3>
+                            {/* 5. SUMMARY & METRICS - Overview */}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
+                                    <DocumentTextIcon className="h-5 w-5 text-blue-500" />
+                                    <span>Summary & Metrics</span>
+                                </h3>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <ClockIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <ClockIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
                     <div className="text-2xl font-bold text-gray-900">
                       {forensicsData?.summary.duration}
                     </div>
-                    <div className="text-xs text-gray-600">Duration</div>
-                  </div>
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <UserGroupIcon className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                                        <div className="text-xs text-gray-600">Duration</div>
+                                    </div>
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <UserGroupIcon className="h-6 w-6 text-green-500 mx-auto mb-2" />
                     <div className="text-2xl font-bold text-gray-900">
                       {forensicsData?.summary.workersPresent}
                     </div>
-                    <div className="text-xs text-gray-600">Workers</div>
-                  </div>
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <ExclamationTriangleIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
+                                        <div className="text-xs text-gray-600">Workers</div>
+                                    </div>
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <ExclamationTriangleIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
                     <div className="text-2xl font-bold text-gray-900">
                       {forensicsData?.summary.safetyIncidents}
                     </div>
-                    <div className="text-xs text-gray-600">Incidents</div>
-                  </div>
-                  <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                    <CurrencyDollarIcon className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">
+                                        <div className="text-xs text-gray-600">Incidents</div>
+                                    </div>
+                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
+                                        <CurrencyDollarIcon className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
+                                        <div className="text-2xl font-bold text-gray-900">
                       $
                       {forensicsData?.compliance.violations
                         ?.reduce((sum, v) => sum + (v.potentialFineUSD || 0), 0)
                         .toLocaleString() || 0}
-                    </div>
-                    <div className="text-xs text-gray-600">Total Risk</div>
-                  </div>
-                </div>
+                                        </div>
+                                        <div className="text-xs text-gray-600">Total Risk</div>
+                                    </div>
+                                </div>
 
-                <div>
+                                <div>
                   <h4 className="font-medium text-gray-800 mb-3">
                     Key Findings
                   </h4>
-                  <div className="space-y-2">
+                                    <div className="space-y-2">
                     {forensicsData?.summary.keyFindings.map(
                       (finding, index) => (
                         <div
                           key={index}
                           className="flex items-start space-x-2 bg-white/70 backdrop-blur-sm rounded-lg p-3"
                         >
-                          <EyeIcon className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-gray-800">{finding}</p>
-                        </div>
+                                                <EyeIcon className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                                                <p className="text-sm text-gray-800">{finding}</p>
+                                            </div>
                       )
                     )}
-                  </div>
-                </div>
-              </div>
-            </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
           ) : null}
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }
