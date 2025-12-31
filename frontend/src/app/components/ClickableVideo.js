@@ -84,11 +84,10 @@ export default function ClickableVideo({
             <video
                 ref={videoRef}
                 className="w-full h-auto"
+                controls
                 autoPlay
-                loop
                 muted
                 playsInline
-                disablePictureInPicture
                 poster={thumbnailUrl}
                 style={{ display: 'block', width: '100%', height: '100%' }}
             />

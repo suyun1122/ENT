@@ -158,26 +158,26 @@ export default function UploadVideo() {
   };
 
   return (
-    <div
-      onClick={handleClick}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      className={`
-        relative group rounded-xl overflow-hidden transition-all duration-300 ease-in-out
-        ${isUploading
-          ? 'bg-blue-50 border-2 border-blue-300 border-dashed cursor-wait'
-          : isDragOver
-            ? 'bg-blue-50 border-2 border-blue-300 border-dashed scale-105 cursor-pointer'
-            : uploadError
-              ? 'bg-red-50 border-2 border-red-300 border-dashed cursor-pointer'
-              : 'bg-gray-100/80 hover:bg-gray-200/90 border-2 border-gray-300 border-dashed hover:border-gray-400 cursor-pointer'
-        }
-        backdrop-blur-sm shadow-sm hover:shadow-md
-        flex flex-col items-center justify-center
-        h-110 w-full
-      `}
-      >
+    <div className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group transform hover:-translate-y-1">
+      {/* Upload Area - Top Section (matches video thumbnail height) */}
+      <div
+        onClick={handleClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`
+          relative h-48 overflow-hidden transition-all duration-300 ease-in-out
+          ${isUploading
+            ? 'bg-blue-50 cursor-wait'
+            : isDragOver
+              ? 'bg-blue-100 cursor-pointer'
+              : uploadError
+                ? 'bg-red-50 cursor-pointer'
+                : 'bg-gray-100 cursor-pointer'
+          }
+          flex flex-col items-center justify-center
+        `}
+        >
       {/* Hidden File Input */}
       <input
         type="file"
@@ -278,32 +278,17 @@ export default function UploadVideo() {
                 Click to browse or drag & drop
               </p>
 
-              <p className="text-xs text-gray-500 font-inter mt-3">
-                Video will be automatically synced to Twelve Labs
-              </p>
-            </div>
 
-            {/* Upload Icon */}
-            <div className={`
-              mt-4 transition-all duration-300
-              ${isDragOver
-                ? 'text-blue-500 scale-110'
-                : 'text-gray-400 group-hover:text-gray-600 group-hover:scale-105'
-              }
-            `}>
-              <CloudArrowUpIcon className="h-6 w-6" />
             </div>
           </>
         )}
       </div>
 
-      {/* Hover Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      {/* Overlay for drag state */}
+      {isDragOver && (
+        <div className="absolute inset-0 border-4 border-blue-500 border-dashed bg-blue-50/50 pointer-events-none"></div>
+      )}
 
-      {/* Corner Accent */}
-      <div className="absolute top-3 right-3 opacity-20 group-hover:opacity-40 transition-opacity duration-300">
-        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-      </div>
 
       {/* Success Modal */}
       {showSuccessModal && (
@@ -415,6 +400,71 @@ export default function UploadVideo() {
           </div>
         </div>
       )}
+      </div>
+
+      {/* Bottom Info Section (matches ClipCard structure) */}
+      <div className="p-4 space-y-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">
+            Upload Video
+          </h3>
+          <p className="text-xs text-gray-500">
+            Click to browse or drag & drop
+          </p>
+        </div>
+
+        {/* Video Info Icons */}
+        <div className="flex items-center gap-3 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            <ClockIcon className="w-4 h-4" />
+            ~2-3 min
+          </span>
+          <span className="flex items-center gap-1">
+            <VideoCameraIcon className="w-4 h-4" />
+            MP4, MOV, AVI
+          </span>
+        </div>
+
+        {/* Processing Steps */}
+        <div className="pt-3 border-t border-gray-100 space-y-2.5">
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+              1
+            </div>
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-gray-800">Video Indexing</div>
+              <div className="text-[11px] text-gray-500 leading-tight">Twelve Labs AI indexes your video</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+              2
+            </div>
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-gray-800">Tool Detection</div>
+              <div className="text-[11px] text-gray-500 leading-tight">YOLO11m detects surgical tools</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+              3
+            </div>
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-gray-800">Surgical Analysis</div>
+              <div className="text-[11px] text-gray-500 leading-tight">Generate phases & SOAP notes</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-bold mt-0.5">
+              4
+            </div>
+            <div className="flex-1">
+              <div className="text-xs font-semibold text-gray-800">Results Ready</div>
+              <div className="text-[11px] text-gray-500 leading-tight">View & chat with your video</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
