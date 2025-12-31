@@ -1,0 +1,55 @@
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Anesthesia & Positioning",
+      "start_time": 0,
+      "end_time": 172,
+      "chapter_summary": "I prepared the surgical training pad and positioned the necessary instruments. I demonstrated the proper handling of surgical tools such as forceps and scissors, and began the interrupted suturing technique."
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Surgical Approach & Incision",
+      "start_time": 172,
+      "end_time": 344,
+      "chapter_summary": "I continued with the interrupted suturing technique and introduced the continuous suturing method. I demonstrated the proper use of needle drivers and the importance of maintaining tension during suturing."
+    },
+    {
+      "chapter_number": 3,
+      "chapter_title": "Exposure & Dissection",
+      "start_time": 344,
+      "end_time": 516,
+      "chapter_summary": "I demonstrated the horizontal mattress suturing technique, emphasizing the importance of precise placement and tension control. I also showed how to tie knots and trim excess suture material."
+    },
+    {
+      "chapter_number": 4,
+      "chapter_title": "Main Procedure",
+      "start_time": 516,
+      "end_time": 688,
+      "chapter_summary": "I demonstrated the vertical mattress and deep dermal suturing techniques, focusing on the proper placement of sutures and the creation of secure knots. I also showed how to handle the suture thread and forceps effectively."
+    },
+    {
+      "chapter_number": 5,
+      "chapter_title": "Hemostasis & Inspection",
+      "start_time": 688,
+      "end_time": 860,
+      "chapter_summary": "I demonstrated the Aberdeen knot and half-buried mattress suturing techniques, ensuring that the knots were buried securely within the tissue. I also showed how to maintain tension and create a neat suture pattern."
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Closure",
+      "start_time": 860,
+      "end_time": 1032,
+      "chapter_summary": "I demonstrated the locking horizontal mattress suturing technique, focusing on the precise placement of sutures and the creation of secure knots. I also showed how to trim excess suture material and ensure that the sutures were properly anchored."
+    }
+  ],
+  "operative_note": {
+    "title": "Suturing Techniques Demonstration",
+    "SOAP": {
+      "Subjective": "I performed a demonstration of various suturing techniques on a surgical training pad. The techniques included interrupted sutures, continuous sutures, horizontal mattress sutures, vertical mattress sutures, deep dermal sutures, Aberdeen knots, and half-buried mattress sutures.",
+      "Objective": "I identified the proper handling of surgical instruments such as forceps and scissors. I observed the importance of maintaining tension and precise placement during suturing. I also noted the proper techniques for tying knots and trimming excess suture material.",
+      "Assessment": "I assessed the demonstration as successful in showcasing the various suturing techniques and the importance of proper technique and precision. No complications were observed during the demonstration.",
+      "Plan": "I closed the demonstration by ensuring that all sutures were properly anchored and that the knots were secure. I also emphasized the importance of maintaining sterility and proper disposal of contaminated items."
+    }
+  }
+}

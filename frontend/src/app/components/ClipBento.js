@@ -194,158 +194,111 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     });
   };
 
-  // Surgical analysis prompt (constant)
-  const surgicalAnalysisPrompt = `You are analyzing a full-length surgical video.
+  // Surgical analysis state
+  const [surgicalAnalysisData, setSurgicalAnalysisData] = useState(null);
+  const [isLoadingSurgicalAnalysis, setIsLoadingSurgicalAnalysis] = useState(false);
+  const [surgicalAnalysisError, setSurgicalAnalysisError] = useState(null);
+  const [surgicalAnalysisProgress, setSurgicalAnalysisProgress] = useState(0);
+  const [surgicalAnalysisStage, setSurgicalAnalysisStage] = useState('initializing');
 
-This task is for EDUCATIONAL and DEMONSTRATION purposes only.
-The output is a video-derived operative summary and is NOT a substitute for a clinical operative report.
+  // Load surgical analysis when videoId is available
+  useEffect(() => {
+    const loadSurgicalAnalysis = async () => {
+      if (!videoId) return;
 
-Your tasks:
+      setIsLoadingSurgicalAnalysis(true);
+      setSurgicalAnalysisError(null);
+      setSurgicalAnalysisProgress(0);
+      setSurgicalAnalysisStage('initializing');
 
-1. Chapterize the surgery using the predefined surgical phases below.
-2. Generate a SOAP-inspired operative note STRICTLY based on what is visible in the video.
-   - CRITICAL: Write the operative note in FIRST-PERSON perspective
-   - Use "I performed...", "I observed...", "I assessed...", "I identified..."
-   - Write as if you are the surgeon documenting the procedure
-   - Example: "I made an incision..." instead of "An incision was made..."
-   - Example: "I identified the cystic duct..." instead of "The cystic duct was identified..."
-
-IMPORTANT GLOBAL RULES (SURGEON-SAFE GUARDRAILS):
-
-- Analyze the ENTIRE video from start to finish.
-- Use ONLY the phases provided. Do NOT invent new phases.
-- Do NOT infer or assume:
-• patient symptoms
-• surgical indication
-• pathology or diagnosis (e.g., gallstones, malignancy)
-• postoperative orders or plans
-- If information is NOT explicitly visible or inferable from the video, clearly state:
-"Not explicitly observed in the video."
-- Prioritize factual, observable actions over narrative completeness.
-- When in doubt, be conservative.
-
----
-
-## SURGICAL PHASE DEFINITIONS
-
-Use the following phases, in this exact order when applicable:
-
-1. Access / Exposure
-
-Establishing access to the operative field, including incision or port placement, patient positioning, and visualization.
-
-2. Establishing Hemostasis (Early)
-
-Initial control of bleeding introduced during access and exposure to ensure adequate visualization.
-
-3. Anatomy Identification
-
-Identification of anatomical landmarks and critical structures to orient the surgeon.
-
-4. Pathology Treatment / Intervention
-
-The primary operative task, such as resection, repair, reconstruction, or implant placement.
-
-5. Hemostasis & Verification
-
-Final bleeding control and verification that the intended outcome of the intervention was achieved.
-
-6. Closure
-
-Layered closure of the operative field and restoration of tissue integrity.
-
----
-
-## OUTPUT REQUIREMENTS
-
-Respond with a single valid JSON object in the following format:
-
-{
-"chapters": [
-{
-"phase": "Access / Exposure",
-"start_time_sec": number,
-"end_time_sec": number,
-"description": "Brief, objective description of what occurred during this phase."
-}
-],
-"operative_note": {
-"SOAP": {
-"Subjective": "If patient-reported symptoms or surgical indications are not explicitly shown, state: 'Not explicitly observed in the video.'",
-"Objective": "Objective intraoperative actions and findings observed in the video, written in clinical operative language.",
-"Assessment": "Assessment of procedural completion and intraoperative outcome based solely on observed evidence (e.g., adequate exposure, completion of intervention, hemostasis achieved).",
-"Plan": "Only include immediate postoperative observations if explicitly visible; otherwise state: 'Not explicitly observed in the video.'"
-}
-}
-}
-
----
-
-## STYLE GUIDELINES
-
-- Use a neutral, professional surgical tone.
-- Write in the past tense.
-- Avoid timestamps in the operative note text.
-- Do NOT over-summarize or embellish.
-- Clarity and safety take precedence over completeness.`;
-
-  // Use TanStack Query for surgical analysis with automatic caching
-  const {
-    data: surgicalAnalysisData,
-    isLoading: isLoadingSurgicalAnalysis,
-    error: surgicalAnalysisError,
-  } = useQuery({
-    queryKey: ['surgicalAnalysis', videoId],
-    queryFn: async () => {
-      if (!videoId) return null;
-
-      console.log('[Surgical Analysis] Fetching analysis for video', videoId);
-      const response = await fetch("/api/analysis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoId: videoId,
-          userQuery: surgicalAnalysisPrompt,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to load surgical analysis");
-      }
-
-      const data = await response.json();
-
-      // TwelveLabs API returns data as a JSON string that needs parsing
-      let parsedData;
       try {
-        let jsonString = data.data || data.response;
+        // 1. Try to load from static files first (pre-deployed analysis)
+        console.log('[Surgical Analysis] Checking static file...');
+        const staticResponse = await fetch(`/analysis/${videoId}.json`);
 
-        // Remove markdown code blocks if present (```json ... ```)
-        if (typeof jsonString === 'string') {
-          // Remove markdown code fences
-          jsonString = jsonString
-            .replace(/^```json\s*/i, '')  // Remove opening ```json
-            .replace(/^```\s*/i, '')      // Remove opening ```
-            .replace(/\s*```$/i, '')      // Remove closing ```
-            .trim();
-
-          parsedData = JSON.parse(jsonString);
-        } else {
-          // Already parsed
-          parsedData = jsonString || data;
+        if (staticResponse.ok) {
+          console.log('[Surgical Analysis] Loaded from static file');
+          const staticData = await staticResponse.json();
+          setSurgicalAnalysisData(staticData);
+          setSurgicalAnalysisProgress(100);
+          setSurgicalAnalysisStage('completed');
+          setIsLoadingSurgicalAnalysis(false);
+          return;
         }
-      } catch (parseError) {
-        console.error('[Surgical Analysis] JSON parse error:', parseError);
-        console.error('[Surgical Analysis] Raw data:', data);
-        throw new Error(`Failed to parse surgical analysis: ${parseError.message}`);
-      }
 
-      return parsedData;
-    },
-    enabled: !!videoId, // Only run if videoId exists
-    staleTime: 60 * 60 * 1000, // Consider data fresh for 1 hour
-    gcTime: 24 * 60 * 60 * 1000, // Keep in cache for 24 hours
-  });
+        // 2. Static file not found, check API (Blob storage or processing)
+        console.log('[Surgical Analysis] Static file not found, checking API...');
+        const response = await fetch(`/api/analysis/${videoId}`);
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          console.log('[Surgical Analysis] Loaded from API/Blob');
+          setSurgicalAnalysisData(data.data);
+          setSurgicalAnalysisProgress(100);
+          setSurgicalAnalysisStage('completed');
+          setIsLoadingSurgicalAnalysis(false);
+        } else if (data.status === "not_found") {
+          console.log('[Surgical Analysis] No results found, starting processing...');
+          setIsLoadingSurgicalAnalysis(true);
+          const startResponse = await fetch(`/api/analysis/${videoId}`, { method: "POST" });
+          const startData = await startResponse.json();
+          console.log('[Surgical Analysis] Processing started:', startData);
+          pollSurgicalAnalysis(videoId);
+        } else if (data.status === "processing") {
+          console.log('[Surgical Analysis] Already processing, polling...');
+          setIsLoadingSurgicalAnalysis(true);
+          setSurgicalAnalysisProgress(data.progress || 0);
+          setSurgicalAnalysisStage(data.stage || 'processing');
+          pollSurgicalAnalysis(videoId);
+        }
+      } catch (error) {
+        console.error('[Surgical Analysis] Error loading:', error);
+        setSurgicalAnalysisError(error.message);
+        setIsLoadingSurgicalAnalysis(false);
+      }
+    };
+
+    loadSurgicalAnalysis();
+  }, [videoId]);
+
+  // Poll surgical analysis status
+  const pollSurgicalAnalysis = async (videoId) => {
+    const maxAttempts = 60; // 5 minutes (5s interval)
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/analysis/${videoId}`);
+        const data = await response.json();
+
+        if (data.status === "completed") {
+          console.log('[Surgical Analysis] Processing completed');
+          setSurgicalAnalysisData(data.data);
+          setSurgicalAnalysisProgress(100);
+          setSurgicalAnalysisStage('completed');
+          setIsLoadingSurgicalAnalysis(false);
+        } else if (data.status === "processing") {
+          setSurgicalAnalysisProgress(data.progress || 0);
+          setSurgicalAnalysisStage(data.stage || 'processing');
+
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 5000);
+          } else {
+            throw new Error('Surgical analysis processing timeout');
+          }
+        } else {
+          throw new Error(`Unexpected status: ${data.status}`);
+        }
+      } catch (error) {
+        console.error('[Surgical Analysis] Polling error:', error);
+        setSurgicalAnalysisError(error.message);
+        setIsLoadingSurgicalAnalysis(false);
+      }
+    };
+
+    poll();
+  };
 
   // Update state when query data changes
   useEffect(() => {
@@ -861,21 +814,21 @@ Respond with a single valid JSON object in the following format:
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-2">
                       <span className="px-3 py-1 rounded-full text-sm font-semibold text-blue-700 bg-blue-100 border border-blue-200">
-                        {chapter.phase}
+                        {chapter.phase || chapter.chapter_title}
                       </span>
                       <span className="text-sm text-gray-600">
-                        {Math.floor(chapter.start_time_sec / 60)}:
-                        {(chapter.start_time_sec % 60)
+                        {Math.floor((chapter.start_time_sec ?? chapter.start_time) / 60)}:
+                        {((chapter.start_time_sec ?? chapter.start_time) % 60)
                           .toString()
                           .padStart(2, "0")}{" "}
-                        - {Math.floor(chapter.end_time_sec / 60)}:
-                        {(chapter.end_time_sec % 60)
+                        - {Math.floor((chapter.end_time_sec ?? chapter.end_time) / 60)}:
+                        {((chapter.end_time_sec ?? chapter.end_time) % 60)
                           .toString()
                           .padStart(2, "0")}
                       </span>
                     </div>
                     <p className="text-sm text-gray-800">
-                      {chapter.description}
+                      {chapter.description || chapter.chapter_summary}
                     </p>
                   </div>
                 </div>

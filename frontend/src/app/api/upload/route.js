@@ -51,22 +51,48 @@ export async function POST(request) {
 
         console.log('[Upload] Video indexed successfully, Video ID:', completedTask.videoId);
 
-        // Trigger tool detection
-        console.log('[Upload] Triggering tool detection...');
-        try {
-            const detectionResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/detect-tools/${completedTask.videoId}`, {
-                method: 'POST',
-            });
+        // Trigger tool detection and surgical analysis in parallel
+        console.log('[Upload] Triggering post-processing (tool detection & surgical analysis)...');
 
-            if (!detectionResponse.ok) {
-                console.warn('[Upload] Tool detection failed to start, but video was uploaded successfully');
-            } else {
-                console.log('[Upload] Tool detection started successfully');
-            }
-        } catch (detectionError) {
-            console.warn('[Upload] Tool detection error:', detectionError);
-            // Continue even if detection fails
-        }
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+        // Start both processes in parallel
+        const [detectionResult, analysisResult] = await Promise.allSettled([
+            fetch(`${baseUrl}/api/detect-tools/${completedTask.videoId}`, { method: 'POST' })
+                .then(res => {
+                    if (res.ok) {
+                        console.log('[Upload] Tool detection started successfully');
+                        return { success: true };
+                    } else {
+                        console.warn('[Upload] Tool detection failed to start');
+                        return { success: false };
+                    }
+                })
+                .catch(error => {
+                    console.warn('[Upload] Tool detection error:', error);
+                    return { success: false };
+                }),
+
+            fetch(`${baseUrl}/api/analysis/${completedTask.videoId}`, { method: 'POST' })
+                .then(res => {
+                    if (res.ok) {
+                        console.log('[Upload] Surgical analysis started successfully');
+                        return { success: true };
+                    } else {
+                        console.warn('[Upload] Surgical analysis failed to start');
+                        return { success: false };
+                    }
+                })
+                .catch(error => {
+                    console.warn('[Upload] Surgical analysis error:', error);
+                    return { success: false };
+                })
+        ]);
+
+        console.log('[Upload] Post-processing triggered:', {
+            toolDetection: detectionResult.status === 'fulfilled' ? 'started' : 'failed',
+            surgicalAnalysis: analysisResult.status === 'fulfilled' ? 'started' : 'failed'
+        });
 
         return NextResponse.json({
             success: true,

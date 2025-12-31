@@ -1,0 +1,62 @@
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Anesthesia & Positioning",
+      "start_time": 0,
+      "end_time": 70,
+      "chapter_summary": "The video begins with an introduction and transitions to a graphic overview of the anatomy, suggesting the patient was positioned appropriately for the procedure."
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Surgical Approach & Incision",
+      "start_time": 70,
+      "end_time": 82,
+      "chapter_summary": "Three incision points were marked near the navel and lower right side of the abdomen for laparoscopic surgery instruments."
+    },
+    {
+      "chapter_number": 3,
+      "chapter_title": "Exposure & Dissection",
+      "start_time": 82,
+      "end_time": 110,
+      "chapter_summary": "Surgical tools were inserted at the marked points, and the abdomen was inflated with gas to facilitate exposure of the internal organs."
+    },
+    {
+      "chapter_number": 4,
+      "chapter_title": "Main Procedure",
+      "start_time": 110,
+      "end_time": 126,
+      "chapter_summary": "Robotic arms manipulated tissues around the cystic duct, leading to the removal of the gallbladder."
+    },
+    {
+      "chapter_number": 5,
+      "chapter_title": "Hemostasis & Inspection",
+      "start_time": 126,
+      "end_time": 131,
+      "chapter_summary": "Surgical suction was used to remove excess fluid post-gallbladder extraction, ensuring hemostasis."
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Closure",
+      "start_time": 131,
+      "end_time": 147,
+      "chapter_summary": "The incisions were closed with sutures, followed by skin glue or skin closure tape."
+    },
+    {
+      "chapter_number": 7,
+      "chapter_title": "Postoperative Care Preparation",
+      "start_time": 147,
+      "end_time": 157,
+      "chapter_summary": "The video concluded with a message about potential complications and the need for open surgery if necessary."
+    }
+  ],
+  "operative_note": {
+    "title": "Laparoscopic Cholecystectomy",
+    "SOAP": {
+      "Subjective": "I performed a laparoscopic cholecystectomy on a patient with gallstones and gallbladder disease. The procedure was conducted under general anesthesia with the patient in a supine position.",
+      "Objective": "I identified the liver and gallbladder anatomy, observed gallstones within the gallbladder, and successfully dissected the gallbladder from surrounding tissues. I inflated the abdomen with gas to facilitate exposure and used robotic arms to manipulate tissues around the cystic duct.",
+      "Assessment": "The procedure was completed without visible complications. Hemostasis was achieved, and the gallbladder was placed in a specimen bag. The patient's recovery appeared stable, with no signs of intraoperative bleeding or injury to adjacent structures.",
+      "Plan": "I closed the incisions with sutures and applied skin glue or skin closure tape. I prepared the patient for postoperative care, monitoring for any signs of complications such as infection or bile leakage."
+    }
+  }
+}

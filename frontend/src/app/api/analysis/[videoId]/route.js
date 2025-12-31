@@ -1,38 +1,269 @@
-import { TwelveLabs, TwelvelabsApi } from 'twelvelabs-js';
+import { NextResponse } from 'next/server';
+import path from 'path';
+import fs from 'fs';
+import { TwelveLabs } from 'twelvelabs-js';
+import { put, head } from '@vercel/blob';
 
-const twelvelabs_client = new TwelveLabs({apiKey: process.env.TWELVELABS_API_KEY});
+const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+const processingStatus = new Map();
+
+// Surgical analysis prompt
+const surgicalAnalysisPrompt = `You are analyzing a full-length surgical video.
+
+This task is for EDUCATIONAL and DEMONSTRATION purposes only.
+The output is a video-derived operative summary and is NOT a substitute for a clinical operative report.
+
+Your tasks:
+
+1. Chapterize the surgery using the predefined surgical phases below.
+2. Generate a SOAP-inspired operative note STRICTLY based on what is visible in the video.
+   - CRITICAL: Write the operative note in FIRST-PERSON perspective
+   - Use "I performed...", "I observed...", "I assessed...", "I identified..."
+   - If certain details are not discernible, use phrases like "not fully visible" or "unable to confirm from video."
+   - Include relevant timestamps using the format [HH:MM:SS] where appropriate
+
+EXAMPLE of first-person voice:
+✅ "I performed an incision at the level of T10-T11..."
+✅ "I identified a herniated disc and proceeded with a microdiscectomy..."
+❌ "The surgeon performed..." (INCORRECT — do NOT use third person)
+
+3. Return JSON only, with no additional commentary.
+
+## OUTPUT FORMAT
+
+\`\`\`json
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Anesthesia & Positioning",
+      "start_time": 0,
+      "end_time": 120,
+      "chapter_summary": "Patient positioned in prone position with appropriate padding. General anesthesia administered."
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Surgical Approach & Incision",
+      "start_time": 120,
+      "end_time": 350,
+      "chapter_summary": "Midline incision performed. Dissection through subcutaneous tissue and fascia."
+    }
+  ],
+  "operative_note": {
+    "title": "Lumbar Microdiscectomy (Example)",
+    "SOAP": {
+      "Subjective": "I performed a lumbar microdiscectomy on a patient with symptomatic disc herniation. [Details as visible in video]",
+      "Objective": "I identified [specific anatomical findings]. I observed [intraoperative findings].",
+      "Assessment": "I assessed the procedure as [outcome]. [Complications or concerns if visible].",
+      "Plan": "I closed the wound in layers. [Postoperative plan as indicated by procedure]."
+    }
+  }
+}
+\`\`\`
+
+## PREDEFINED SURGICAL PHASES (use as chapter titles)
+
+You MUST use one or more of the following standardized chapter titles.
+If a phase is not present in this video, skip it.
+
+1. "Anesthesia & Positioning"
+2. "Surgical Approach & Incision"
+3. "Exposure & Dissection"
+4. "Main Procedure"
+5. "Hemostasis & Inspection"
+6. "Closure"
+7. "Postoperative Care Preparation"
+
+## CRITICAL RULES
+
+- NEVER invent or assume clinical information not visible in the video.
+- Use ONLY the predefined chapter titles listed above.
+- Chapters must be chronological and non-overlapping.
+- Write the entire operative note in FIRST-PERSON PAST TENSE.
+- If you cannot determine a detail, acknowledge it (e.g., "specifics not visible").
+- Focus on what is surgically relevant and observable.
+
+## STYLE GUIDELINES
+
+- Use a neutral, professional surgical tone.
+- Write in the past tense.
+- Avoid timestamps in the operative note text.
+- Do NOT over-summarize or embellish.
+- Clarity and safety take precedence over completeness.`;
 
 export async function GET(request, { params }) {
     const { videoId } = await params;
+
+    if (!videoId) {
+        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    console.log('[Surgical Analysis] GET request for video:', videoId);
+
+    // 1. Check Vercel Blob Storage first (if BLOB_READ_WRITE_TOKEN is set)
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+        try {
+            const blobInfo = await head(`analysis/${videoId}.json`);
+            if (blobInfo) {
+                console.log('[Surgical Analysis] Found in Vercel Blob');
+                const response = await fetch(blobInfo.url);
+                const analysisData = await response.text();
+                return NextResponse.json({
+                    status: 'completed',
+                    videoId,
+                    data: JSON.parse(analysisData)
+                });
+            }
+        } catch (error) {
+            console.warn(`[Surgical Analysis] Failed to fetch from Vercel Blob for ${videoId}:`, error.message);
+        }
+    }
+
+    // 2. Fallback to local filesystem (for development and pre-deployed videos)
+    const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+    if (fs.existsSync(analysisPath)) {
+        try {
+            console.log('[Surgical Analysis] Found in local filesystem');
+            const analysisData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+            return NextResponse.json({
+                status: 'completed',
+                videoId,
+                data: analysisData
+            });
+        } catch (error) {
+            console.error('[Surgical Analysis] Error reading local file:', error);
+        }
+    }
+
+    // 3. Check if processing is in progress
+    if (processingStatus.has(videoId)) {
+        const status = processingStatus.get(videoId);
+        console.log('[Surgical Analysis] Processing in progress:', status);
+        return NextResponse.json({
+            status: 'processing',
+            videoId,
+            ...status
+        });
+    }
+
+    console.log('[Surgical Analysis] Not found');
+    return NextResponse.json({
+        status: 'not_found',
+        videoId,
+        message: 'Surgical analysis has not been run.'
+    });
+}
+
+export async function POST(request, { params }) {
+    const { videoId } = await params;
+
+    if (!videoId) {
+        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    console.log('[Surgical Analysis] POST request for video:', videoId);
+
+    // Check if already processing
+    if (processingStatus.has(videoId)) {
+        return NextResponse.json({
+            status: 'already_processing',
+            videoId,
+            message: 'Surgical analysis is already being processed.'
+        }, { status: 409 });
+    }
+
+    // Start processing
+    processingStatus.set(videoId, { progress: 0, stage: 'initializing' });
+
+    // Process asynchronously
+    processSurgicalAnalysis(videoId).catch(error => {
+        console.error('[Surgical Analysis] Processing error:', error);
+        processingStatus.delete(videoId);
+    });
+
+    return NextResponse.json({
+        status: 'started',
+        videoId,
+        message: 'Surgical analysis processing started.'
+    });
+}
+
+async function processSurgicalAnalysis(videoId) {
     try {
-        const gist = await twelvelabs_client.gist({
+        console.log(`[Surgical Analysis] Starting analysis for video ${videoId}`);
+
+        processingStatus.set(videoId, { progress: 10, stage: 'calling_twelvelabs_api' });
+
+        // Call TwelveLabs API
+        const response = await twelvelabs_client.analyze({
             videoId: videoId,
-            types: ['title', 'topic', 'hashtag']
-        })
-        return new Response(JSON.stringify(gist), { status: 200 });
+            prompt: surgicalAnalysisPrompt,
+            temperature: 0.2
+        });
+
+        processingStatus.set(videoId, { progress: 60, stage: 'parsing_response' });
+
+        // Parse the response
+        let jsonString = response.data || response.response || "{}";
+
+        // Remove markdown code fences if present
+        jsonString = jsonString
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        const parsedData = JSON.parse(jsonString);
+
+        processingStatus.set(videoId, { progress: 80, stage: 'saving_results' });
+
+        // Save to local filesystem first
+        const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+
+        // Ensure directory exists
+        const dir = path.dirname(localOutputPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+
+        fs.writeFileSync(localOutputPath, JSON.stringify(parsedData, null, 2));
+        console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
+
+        // Save to Vercel Blob if token is available
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const fileContent = fs.readFileSync(localOutputPath);
+                const blob = await put(`analysis/${videoId}.json`, fileContent, {
+                    access: 'public',
+                    contentType: 'application/json'
+                });
+                console.log(`[Surgical Analysis] Uploaded to Vercel Blob: ${blob.url}`);
+            } catch (blobError) {
+                console.error(`[Surgical Analysis] Failed to upload to Vercel Blob:`, blobError);
+            }
+        }
+
+        processingStatus.set(videoId, { progress: 100, stage: 'completed' });
+        console.log(`[Surgical Analysis] Processing completed for video ${videoId}`);
+
+        // Clean up status after a delay
+        setTimeout(() => {
+            processingStatus.delete(videoId);
+        }, 60000); // 1 minute
+
     } catch (error) {
-        console.error("Error fetching gist", error);
-        
-        // Check if it's a video_not_ready error from TwelveLabs
-        if (error.message && error.message.includes('video_not_ready')) {
-            return new Response(JSON.stringify({ 
-                code: 'video_not_ready',
-                message: 'The video is still being indexed. Please try again once the indexing process is complete.'
-            }), { status: 202 }); // 202 Accepted - request accepted but processing not complete
-        }
-        
-        // Check if it's a parameter_invalid error (video not in index yet)
-        if (error.body && error.body.code === 'parameter_invalid' && 
-            error.body.message && error.body.message.includes('video_id parameter is invalid')) {
-            return new Response(JSON.stringify({ 
-                code: 'video_not_uploaded',
-                message: 'The video is still being uploaded and processed. Please wait for the upload to complete.'
-            }), { status: 202 }); // 202 Accepted - request accepted but processing not complete
-        }
-        
-        return new Response(JSON.stringify({ 
-            code: 'gist_error',
-            error: 'Error fetching gist' 
-        }), { status: 500 });
+        console.error(`[Surgical Analysis] Error processing video ${videoId}:`, error);
+        processingStatus.set(videoId, {
+            progress: 0,
+            stage: 'error',
+            error: error.message
+        });
+
+        // Clean up error status after a delay
+        setTimeout(() => {
+            processingStatus.delete(videoId);
+        }, 60000);
+
+        throw error;
     }
 }
