@@ -27,6 +27,8 @@ import {
 import ClickableVideo from "./ClickableVideo";
 import ClipChat from "./ClipChat";
 import { ToolFilterPanel } from "./ToolDetectionOverlay";
+import ToolUsageTimeline from "./ToolUsageTimeline";
+import ToolUsageStatistics from "./ToolUsageStatistics";
 
 // Optional default geolocation (configure via NEXT_PUBLIC_DEFAULT_LAT/LON)
 const DEFAULT_LAT = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_LAT || "");
@@ -67,6 +69,7 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
   const [enabledTools, setEnabledTools] = useState(null); // null means all enabled
   const [toolDetectionProgress, setToolDetectionProgress] = useState(0);
   const [toolDetectionStage, setToolDetectionStage] = useState('initializing');
+  const [activeTab, setActiveTab] = useState('tool'); // 'tool', 'timeline', 'soap'
 
   // Auto-load tool detection when videoId is available
   useEffect(() => {
@@ -774,8 +777,86 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
                 </div>
             </div>
 
-      {/* Surgical Phase Timeline */}
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 shadow-lg">
+            {/* Tabs Section - Tool, Timeline, SOAP Note */}
+            <div className="w-full">
+              {/* Tab Navigation */}
+              <div className="border-b border-gray-200 mb-4">
+                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                  <button
+                    onClick={() => setActiveTab('tool')}
+                    className={`
+                      py-4 px-1 border-b-2 font-medium text-sm
+                      ${activeTab === 'tool'
+                        ? 'border-emerald-500 text-emerald-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                    `}
+                  >
+                    Tool
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('timeline')}
+                    className={`
+                      py-4 px-1 border-b-2 font-medium text-sm
+                      ${activeTab === 'timeline'
+                        ? 'border-blue-500 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                    `}
+                  >
+                    Timeline
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('soap')}
+                    className={`
+                      py-4 px-1 border-b-2 font-medium text-sm
+                      ${activeTab === 'soap'
+                        ? 'border-purple-500 text-purple-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                    `}
+                  >
+                    SOAP Note
+                  </button>
+                </nav>
+              </div>
+
+              {/* Tab Content */}
+              <div className="mt-4">
+                {/* Tool Tab */}
+                {activeTab === 'tool' && (
+                  <div className="space-y-6">
+                    {/* Tool Usage Timeline */}
+                    {toolDetectionData && (
+                      <ToolUsageTimeline
+                        detectionData={toolDetectionData}
+                        videoDuration={toolDetectionData.video_properties?.duration || clipData?.duration || 0}
+                        onSeekTo={(timestamp) => {
+                          // Seek video to timestamp
+                          const videoElement = document.querySelector('video');
+                          if (videoElement) {
+                            videoElement.currentTime = timestamp;
+                          }
+                        }}
+                      />
+                    )}
+
+                    {/* Tool Usage Statistics */}
+                    {toolDetectionData && (
+                      <ToolUsageStatistics detectionData={toolDetectionData} />
+                    )}
+
+                    {!toolDetectionData && (
+                      <div className="bg-gray-50 rounded-lg border border-gray-200 p-8 text-center">
+                        <p className="text-gray-500">Tool detection data not available</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Timeline Tab */}
+                {activeTab === 'timeline' && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 shadow-lg">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
             <ClockIcon className="h-5 w-5 text-blue-500" />
@@ -844,8 +925,12 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
             </p>
           </div>
         )}
-      </div>
+                  </div>
+                )}
 
+                {/* SOAP Note Tab */}
+                {activeTab === 'soap' && (
+                  <div>
             {/* Forensics Details Panel */}
             <div className="w-full">
                 <div className="bg-white/80 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
@@ -1116,361 +1201,12 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
                 </div>
               )}
             </div>
-          ) : forensicsData ? (
-                        <div className="p-6 space-y-6">
-              {/* Legacy Forensics View - kept for backward compatibility */}
-                            {/* 1. COMPLIANCE VIOLATIONS - Most Critical for Factory Managers */}
-                            <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-6 border border-red-100">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                        <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
-                                        <span>Compliance Violations</span>
-                                    </h3>
-                                    <div className="flex items-center space-x-4">
-                                        <div className="text-right">
-                                            <div className="text-2xl font-bold text-red-600">
-                                                {forensicsData?.compliance.score || 0}%
-                                            </div>
-                      <div className="text-sm text-gray-600">
-                        Compliance Score
-                      </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-lg font-bold text-red-600">
-                        $
-                        {forensicsData?.compliance.violations
-                          ?.reduce(
-                            (sum, v) => sum + (v.potentialFineUSD || 0),
-                            0
-                          )
-                          .toLocaleString() || 0}
-                                            </div>
-                      <div className="text-sm text-gray-600">
-                        Potential Fines
-                      </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mb-4 p-3 bg-white/70 backdrop-blur-sm rounded-lg border border-red-200/50">
-                                    <p className="text-sm text-gray-700">
-                    <strong>Scoring Methodology:</strong>{" "}
-                    {forensicsData?.compliance.scoringMethodology}
-                                    </p>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {forensicsData?.compliance.violations.map((violation) => (
-                    <div
-                      key={violation.id}
-                      className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-red-200/50"
-                    >
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center space-x-2 mb-2">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium border ${getSeverityColor(
-                                violation.severity
-                              )}`}
-                            >
-                                                            {violation.severity.toUpperCase()}
-                                                        </span>
-                            <span className="text-sm text-gray-600">
-                              {violation.timestamp}
-                            </span>
-                            <span className="text-sm text-gray-500">
-                              • {violation.location}
-                            </span>
-                            <span className="text-sm font-bold text-red-600">
-                              ${violation.potentialFineUSD?.toLocaleString()}
-                            </span>
-                                                    </div>
-                          <p className="text-sm text-gray-800 mb-2">
-                            {violation.description}
-                          </p>
-                                                    <div className="flex items-center space-x-4 text-xs text-gray-600">
-                            <span>
-                              <strong>Regulation:</strong>{" "}
-                              {violation.regulation}
-                            </span>
-                            <span>
-                              <strong>Root Cause:</strong> {violation.rootCause}
-                            </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* 2. CORRECTIVE ACTIONS - Actionable Items */}
-                            <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-100">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                                    <ClipboardDocumentListIcon className="h-5 w-5 text-emerald-500" />
-                                    <span>Corrective Actions</span>
-                                </h3>
-
-                                <div className="space-y-3">
-                                    {forensicsData?.correctiveActions.map((action, index) => {
-                                        const currentStatus = getActionStatus(index, action.status);
-                                        return (
-                      <div
-                        key={index}
-                        className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50"
-                      >
-                                                <div className="flex items-start justify-between mb-2">
-                                                    <div className="flex-1">
-                            <p className="text-sm text-gray-800 mb-2">
-                              {action.action}
-                            </p>
-                                                        <div className="flex items-center space-x-4 text-xs text-gray-600">
-                                                            <span className="flex items-center space-x-1">
-                                                                <UserIcon className="h-3 w-3" />
-                                <span>
-                                  <strong>Assignee:</strong> {action.assignee}
-                                </span>
-                                                            </span>
-                                                            <span className="flex items-center space-x-1">
-                                                                <CalendarDaysIcon className="h-3 w-3" />
-                                <span>
-                                  <strong>Due:</strong> {action.dueDate}
-                                                            </span>
-                              </span>
-                              <span>
-                                <strong>Violation ID:</strong>{" "}
-                                {action.violationId}
-                              </span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col items-end space-y-2">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium border ${getActionStatusColor(
-                                currentStatus
-                              )}`}
-                            >
-                                                            {currentStatus}
-                                                        </span>
-                            {currentStatus === "Pending" && (
-                                                            <div className="flex space-x-2">
-                                                                <button
-                                  onClick={() =>
-                                    handleActionApproval(index, "Approved")
-                                  }
-                                                                    className="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-medium rounded-md border border-green-200 transition-colors duration-200 flex items-center space-x-1"
-                                                                >
-                                                                    <CheckCircleIcon className="h-3 w-3" />
-                                                                    <span>Approve</span>
-                                                                </button>
-                                                                <button
-                                  onClick={() =>
-                                    handleActionApproval(index, "Declined")
-                                  }
-                                                                    className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-medium rounded-md border border-red-200 transition-colors duration-200 flex items-center space-x-1"
-                                                                >
-                                                                    <XCircleIcon className="h-3 w-3" />
-                                                                    <span>Decline</span>
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* 3. RISK ASSESSMENT - Safety & Operational Risk */}
-                            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-6 border border-yellow-100">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                                    <ChartBarIcon className="h-5 w-5 text-yellow-500" />
-                                    <span>Risk Assessment</span>
-                                </h3>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <ShieldCheckIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
-                    <div className="text-lg font-bold text-gray-900 capitalize">
-                      {forensicsData?.riskAssessment.overallSafetyRisk}
-                    </div>
-                                        <div className="text-xs text-gray-600">Safety Risk</div>
-                                    </div>
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <CogIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                    <div className="text-lg font-bold text-gray-900 capitalize">
-                      {forensicsData?.riskAssessment.overallOperationalRisk}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Operational Risk
-                    </div>
-                                    </div>
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <ExclamationTriangleIcon className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
-                    <div className="text-lg font-bold text-gray-900">
-                      {forensicsData?.riskAssessment.riskFactors?.length || 0}
-                    </div>
-                                        <div className="text-xs text-gray-600">Risk Factors</div>
-                                    </div>
-                                </div>
-
-                                <div>
-                  <h4 className="font-medium text-gray-800 mb-3">
-                    Risk Factors
-                  </h4>
-                                    <div className="space-y-2">
-                    {forensicsData?.riskAssessment.riskFactors.map(
-                      (factor, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between bg-white/70 backdrop-blur-sm rounded-lg p-3"
-                        >
-                                                <div>
-                            <p className="text-sm font-medium text-gray-800">
-                              {factor.factor}
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {factor.impact}
-                            </p>
-                                                </div>
-                          <span
-                            className={`text-sm font-medium ${getRiskLevelColor(
-                              factor.level
-                            )}`}
-                          >
-                                                    {factor.level.toUpperCase()}
-                                                </span>
-                                            </div>
-                      )
-                    )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 4. OPERATIONAL EFFICIENCY - Lean Manufacturing Focus */}
-                            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-100">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                                    <WrenchScrewdriverIcon className="h-5 w-5 text-purple-500" />
-                                    <span>Operational Efficiency</span>
-                                </h3>
-
-                                <div className="space-y-4">
-                                    <div>
-                    <h4 className="font-medium text-gray-800 mb-3">
-                      Identified Wastes (7 Wastes of Lean)
-                    </h4>
-                                        <div className="space-y-2">
-                      {forensicsData?.operationalEfficiency.identifiedWastes.map(
-                        (waste, index) => (
-                          <div
-                            key={index}
-                            className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border border-purple-200/50"
-                          >
-                                                    <div className="flex items-start justify-between mb-1">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium border ${getWasteTypeColor(
-                                  waste.type
-                                )}`}
-                              >
-                                                            {waste.type}
-                                                        </span>
-                              <span className="text-xs text-gray-500">
-                                {waste.timestamp}
-                              </span>
-                                                    </div>
-                            <p className="text-sm text-gray-800">
-                              {waste.description}
-                            </p>
-                                                </div>
-                        )
-                      )}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                    <h4 className="font-medium text-gray-800 mb-3">
-                      Recommendations
-                    </h4>
-                                        <div className="space-y-2">
-                      {forensicsData?.operationalEfficiency.recommendations.map(
-                        (rec, index) => (
-                          <div
-                            key={index}
-                            className="flex items-start space-x-2 bg-white/70 backdrop-blur-sm rounded-lg p-3"
-                          >
-                                                    <LightBulbIcon className="h-4 w-4 text-purple-500 mt-0.5 flex-shrink-0" />
-                                                    <p className="text-sm text-gray-800">{rec}</p>
-                                                </div>
-                        )
-                      )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 5. SUMMARY & METRICS - Overview */}
-                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2 mb-4">
-                                    <DocumentTextIcon className="h-5 w-5 text-blue-500" />
-                                    <span>Summary & Metrics</span>
-                                </h3>
-
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <ClockIcon className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">
-                      {forensicsData?.summary.duration}
-                    </div>
-                                        <div className="text-xs text-gray-600">Duration</div>
-                                    </div>
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <UserGroupIcon className="h-6 w-6 text-green-500 mx-auto mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">
-                      {forensicsData?.summary.workersPresent}
-                    </div>
-                                        <div className="text-xs text-gray-600">Workers</div>
-                                    </div>
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <ExclamationTriangleIcon className="h-6 w-6 text-red-500 mx-auto mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">
-                      {forensicsData?.summary.safetyIncidents}
-                    </div>
-                                        <div className="text-xs text-gray-600">Incidents</div>
-                                    </div>
-                                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 text-center">
-                                        <CurrencyDollarIcon className="h-6 w-6 text-emerald-500 mx-auto mb-2" />
-                                        <div className="text-2xl font-bold text-gray-900">
-                      $
-                      {forensicsData?.compliance.violations
-                        ?.reduce((sum, v) => sum + (v.potentialFineUSD || 0), 0)
-                        .toLocaleString() || 0}
-                                        </div>
-                                        <div className="text-xs text-gray-600">Total Risk</div>
-                                    </div>
-                                </div>
-
-                                <div>
-                  <h4 className="font-medium text-gray-800 mb-3">
-                    Key Findings
-                  </h4>
-                                    <div className="space-y-2">
-                    {forensicsData?.summary.keyFindings.map(
-                      (finding, index) => (
-                        <div
-                          key={index}
-                          className="flex items-start space-x-2 bg-white/70 backdrop-blur-sm rounded-lg p-3"
-                        >
-                                                <EyeIcon className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                                                <p className="text-sm text-gray-800">{finding}</p>
-                                            </div>
-                      )
-                    )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
           ) : null}
                 </div>
+            </div>
+                  </div>
+                )}
+              </div>
             </div>
         </div>
     );
