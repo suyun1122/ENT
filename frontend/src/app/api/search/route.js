@@ -14,6 +14,9 @@ export async function POST(request) {
         threshold: threshold,
     })
 
+    // Collect all results into an array
+    const results = [];
+
     for await (const item of response) {
         if (item.id && item.clips) { // Grouped by videos
             console.log(` Video ID: ${item.id}`);
@@ -25,6 +28,7 @@ export async function POST(request) {
                 console.log(`    Video ID: ${clip.videoId}`);
                 console.log(`    Confidence: ${clip.confidence}`);
                 console.log(`    Thumbnail URL: ${clip.thumbnailUrl}`);
+                results.push(clip);
             }
         } else { // Grouped by clips.
             console.log(`  Score: ${item.score}`);
@@ -36,9 +40,10 @@ export async function POST(request) {
             if (item.transcription) {
                 console.log(`  Transcription: ${item.transcription}`);
             }
+            results.push(item);
         }
     }
 
-    return new Response(JSON.stringify(response), { status: 200 });
+    return new Response(JSON.stringify({ data: results }), { status: 200 });
 
 }

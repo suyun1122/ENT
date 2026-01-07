@@ -23,14 +23,14 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   const [isSearching, setIsSearching] = useState(false);
 
   const exampleQueries = [
-    "Worker coughing or sick near the CNC machine",
-    "Safety equipment not being worn properly",
-    "Machinery malfunction or unusual vibrations",
-    "Product defects on assembly line",
-    "Unauthorized personnel in restricted areas",
-    "Spillage or hazardous material on floor",
-    "Equipment overheating or sparking",
-    "Quality control issues with finished products"
+    "Surgeon executing surgery",
+    "Using scissors to cut tissue",
+    "Grasper holding organ",
+    "Bleeding or hemorrhage during procedure",
+    "Clipper applying surgical clips",
+    "Cauterization with bipolar forceps",
+    "Suturing or stitching tissue",
+    "Removing gallbladder or organs"
   ];
 
   const sortOptions = [
@@ -42,9 +42,9 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
 
   const categories = [
     { value: 'all', label: 'All Categories' },
-    { value: 'safety', label: 'Safety', color: 'bg-red-100 text-red-800' },
-    { value: 'defect', label: 'Defect', color: 'bg-yellow-100 text-yellow-800' },
-    { value: 'general', label: 'General', color: 'bg-blue-100 text-blue-800' }
+    { value: 'surgical', label: 'Surgical Technique', color: 'bg-blue-100 text-blue-800' },
+    { value: 'tools', label: 'Surgical Tools', color: 'bg-green-100 text-green-800' },
+    { value: 'complications', label: 'Complications', color: 'bg-red-100 text-red-800' }
   ];
 
   const criticalLevels = [
@@ -60,27 +60,29 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     // Trigger search when example is clicked
     const filteredClips = await filterAndSortClips(clipData);
     if (onFilterChange) {
-      onFilterChange(filteredClips);
+      onFilterChange(filteredClips, true); // true = isSearch
     }
   };
 
   // Mock function to determine category based on filename or content
   const getCategoryFromClip = (clip) => {
     const filename = clip.filename?.toLowerCase() || '';
-    if (filename.includes('safety') || filename.includes('ppe') || filename.includes('helmet')) {
-      return 'safety';
-    } else if (filename.includes('defect') || filename.includes('quality') || filename.includes('error')) {
-      return 'defect';
+    if (filename.includes('tool') || filename.includes('scissors') || filename.includes('grasper') || filename.includes('clipper')) {
+      return 'tools';
+    } else if (filename.includes('complication') || filename.includes('bleeding') || filename.includes('hemorrhage') || filename.includes('error')) {
+      return 'complications';
+    } else if (filename.includes('surgery') || filename.includes('surgical') || filename.includes('technique') || filename.includes('sutur')) {
+      return 'surgical';
     }
-    return 'general';
+    return 'surgical';
   };
 
   // Mock function to determine priority based on content analysis
   const getPriorityFromClip = (clip) => {
     const filename = clip.filename?.toLowerCase() || '';
-    if (filename.includes('urgent') || filename.includes('critical') || filename.includes('emergency')) {
+    if (filename.includes('complication') || filename.includes('bleeding') || filename.includes('emergency') || filename.includes('critical')) {
       return 'high';
-    } else if (filename.includes('warning') || filename.includes('caution')) {
+    } else if (filename.includes('caution') || filename.includes('technique') || filename.includes('warning')) {
       return 'medium';
     }
     return 'low';
@@ -134,24 +136,36 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
 
       console.log("Deduplicated results:", deduplicatedResults);
 
-      // Map the deduplicated results back to clip data with search scores
-      const sortedClips = deduplicatedResults.map(result => {
-        // Find the corresponding clip from clipsArray by trying multiple ID fields
-        const clip = clipsArray.find(c => 
-          c.id === result.videoId || 
+      // Map each search result (clip) to a new clip entry with time range
+      const sortedClips = sortedData.map((result, index) => {
+        // Find the corresponding video from clipsArray by trying multiple ID fields
+        const video = clipsArray.find(c =>
+          c.id === result.videoId ||
           c.vss_id === result.videoId ||
           c.systemMetadata?.vss_id === result.videoId
         );
-        if (clip) {
-          console.log(`Found matching clip for videoId ${result.videoId}:`, clip.id);
-          // Add search score and confidence to the clip data
+        if (video) {
+          console.log(`Found matching video for clip - videoId ${result.videoId}:`, video.id);
+          // Create a new clip entry with the specific time range from the search result
           return {
-            ...clip,
+            ...video,
+            // Create unique ID for this clip by combining video ID and clip index
+            id: `${video.id}_clip_${index}`,
+            clipId: `${video.id}_clip_${index}`,
+            originalVideoId: video.id,
+            // Add clip-specific properties
+            start: result.start,
+            end: result.end,
+            clipStart: result.start,
+            clipEnd: result.end,
             searchScore: result.score,
-            searchConfidence: result.confidence
+            searchConfidence: result.confidence,
+            // Update filename to show it's a clip
+            filename: `${video.filename} (${Math.floor(result.start)}s - ${Math.floor(result.end)}s)`,
+            isClip: true
           };
         } else {
-          console.log(`No matching clip found for videoId: ${result.videoId}`);
+          console.log(`No matching video found for clip - videoId: ${result.videoId}`);
         }
         return null;
       }).filter(Boolean); // Remove any undefined results
@@ -212,8 +226,9 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   useEffect(() => {
     const applyFilters = async () => {
       const filteredClips = await filterAndSortClips(clipData);
+      const hasSearch = searchQuery.trim() !== '';
       if (onFilterChange) {
-        onFilterChange(filteredClips);
+        onFilterChange(filteredClips, hasSearch);
       }
     };
 
@@ -223,13 +238,14 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   // Handle search button click
   const handleSearch = async () => {
     const filteredClips = await filterAndSortClips(clipData);
+    const hasSearch = searchQuery.trim() !== '';
     if (onFilterChange) {
-      onFilterChange(filteredClips);
+      onFilterChange(filteredClips, hasSearch);
     }
   };
 
   // Handle Enter key in search input
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       handleSearch();
     }
@@ -256,8 +272,8 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setShowExamples(true)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Search clips by content, behavior, or safety incidents..."
+                  onKeyDown={handleKeyDown}
+                  placeholder="Search surgical videos by procedure, tools, or techniques..."
                   className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all duration-200 font-inter placeholder-gray-500"
                 />
                 

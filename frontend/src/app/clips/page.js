@@ -13,6 +13,7 @@ export default function Clips() {
   const [isVisible, setIsVisible] = useState(false);
   const [clipData, setClipData] = useState([]);
   const [filteredClipData, setFilteredClipData] = useState([]);
+  const [isSearchActive, setIsSearchActive] = useState(false);
 
   useEffect(() => {
     loadClipData();
@@ -27,8 +28,9 @@ export default function Clips() {
   }, [clipData]);
 
   // Handle filter changes from ClipSort component
-  const handleFilterChange = (filteredClips) => {
+  const handleFilterChange = (filteredClips, isSearch = false) => {
     setFilteredClipData(filteredClips);
+    setIsSearchActive(isSearch);
   };
 
   const sampleIds = [('13380578_3840_2160_25fps.mp4', '2ec57a48-d330-4404-a26a-0587348fa865')]
@@ -162,13 +164,13 @@ export default function Clips() {
         }`}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
-            {/* Upload Video Component */}
-            <UploadVideo />
+            {/* Upload Video Component - Hidden during search */}
+            {!isSearchActive && <UploadVideo />}
 
             {/* Clip Cards */}
             {filteredClipData && (Array.isArray(filteredClipData) ? filteredClipData : Object.values(filteredClipData)).map((clip, index) => (
               <ClipCard
-                key={clip.id || clip.pegasusId || index}
+                key={clip.clipId || clip.id || clip.pegasusId || index}
                 vss_id={clip.vss_id || clip.id}
                 video_url={clip.hls?.video_url || clip.video_url || ''}
                 thumbnail_url={clip.hls?.thumbnail_urls?.[0] || clip.thumbnail_url || ''}
@@ -177,6 +179,10 @@ export default function Clips() {
                 name={clip.filename || clip.name || 'Untitled'}
                 searchScore={clip.searchScore}
                 searchConfidence={clip.searchConfidence}
+                clipStart={clip.clipStart}
+                clipEnd={clip.clipEnd}
+                isClip={clip.isClip}
+                isSearchResult={isSearchActive}
               />
             ))}
 

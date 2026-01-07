@@ -13,11 +13,16 @@ import {
 import Hls from 'hls.js';
 import { useRouter } from 'next/navigation';
 
-export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, category, priority, searchScore, searchConfidence }) {
+export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, category, priority, searchScore, searchConfidence, clipStart, clipEnd, isClip, isSearchResult }) {
     const [hovered, setHovered] = useState(false);
     const [imageError, setImageError] = useState(false);
     const videoRef = useRef(null);
     const router = useRouter();
+
+    // Use clip-specific duration if it's a clip, otherwise use full duration
+    const actualDuration = isClip && clipStart !== undefined && clipEnd !== undefined
+        ? clipEnd - clipStart
+        : duration;
 
     // Get category and priority from props or determine from filename
     const getCategory = () => {
@@ -55,8 +60,39 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                 hls = new Hls();
                 hls.loadSource(video_url);
                 hls.attachMedia(video);
+
+                // If this is a clip with time range, seek to the start time
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    if (isClip && clipStart !== undefined) {
+                        video.currentTime = clipStart;
+                    }
+                });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = video_url;
+
+                // If this is a clip with time range, seek to the start time
+                video.addEventListener('loadedmetadata', () => {
+                    if (isClip && clipStart !== undefined) {
+                        video.currentTime = clipStart;
+                    }
+                });
+            }
+
+            // Stop playback when reaching clip end
+            if (isClip && clipEnd !== undefined) {
+                const handleTimeUpdate = () => {
+                    if (video.currentTime >= clipEnd) {
+                        video.currentTime = clipStart || 0;
+                    }
+                };
+                video.addEventListener('timeupdate', handleTimeUpdate);
+
+                return () => {
+                    video.removeEventListener('timeupdate', handleTimeUpdate);
+                    if (hls) {
+                        hls.destroy();
+                    }
+                };
             }
         }
 
@@ -65,7 +101,7 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                 hls.destroy();
             }
         };
-    }, [hovered, video_url]);
+    }, [hovered, video_url, clipStart, clipEnd, isClip]);
 
     const formatDate = (dateString) => {
         if (!dateString) return 'Unknown date';
@@ -109,14 +145,14 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
     };
 
     return (
-        <div 
-            className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-1"
-            onMouseEnter={() => setHovered(true)} 
+        <div
+            className="group cursor-pointer"
+            onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onClick={handleClick}
         >
             {/* Video/Thumbnail Container */}
-            <div className="relative h-48 bg-gray-200 overflow-hidden">
+            <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
                 {!hovered ? (
                     <>
                         {!imageError && thumbnail_url ? (
@@ -163,108 +199,87 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                     />
                 )}
 
-                {/* Duration Badge */}
-                {duration && (
-                    <div className="absolute bottom-3 left-3 bg-black/80 text-white px-3 py-1 rounded-lg text-sm font-medium backdrop-blur-sm">
-                        {formatDuration(duration)}
+                {/* Search Result Overlay - Only for search results */}
+                {isSearchResult && searchScore && (
+                    <div className="absolute inset-0 pointer-events-none transition-opacity duration-100 ease-in-out"
+                         style={{ background: 'linear-gradient(rgba(29, 28, 27, 0.5) 0%, rgba(29, 28, 27, 0) 25%, rgba(29, 28, 27, 0) 70%, rgba(29, 28, 27, 0.7) 100%)' }}>
+                        {/* Confidence Level Badge (HIGH/MEDIUM/LOW) - Top Left */}
+                        <div className="absolute top-3 left-5">
+                            <div className={`flex items-center px-2 py-1 rounded border ${
+                                searchScore >= 80
+                                    ? 'bg-lime-900/70 border-lime-400 text-lime-400'
+                                    : searchScore >= 60
+                                    ? 'bg-yellow-900/70 border-yellow-400 text-yellow-400'
+                                    : 'bg-gray-900/70 border-gray-400 text-gray-400'
+                            }`}>
+                                <p className="text-xs uppercase font-semibold">
+                                    {searchScore >= 80 ? 'HIGH' : searchScore >= 60 ? 'MEDIUM' : 'LOW'}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Timestamp Badge - Top Right */}
+                        {isClip && clipStart !== undefined && clipEnd !== undefined && (
+                            <div className="absolute top-3 right-5">
+                                <div className="px-2 py-1 rounded-md border border-white backdrop-blur-[20px] bg-black/30">
+                                    <div className="text-xs text-white font-mono whitespace-nowrap">
+                                        {formatDuration(clipStart)} - {formatDuration(clipEnd)}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Progress Bar at Bottom - Shows matched segment */}
+                        {isClip && clipStart !== undefined && clipEnd !== undefined && duration && (
+                            <div className="absolute bottom-5 left-5 right-5 h-2 bg-gray-200/40 rounded-lg">
+                                <div
+                                    className={`absolute top-0 h-full rounded-xs ${
+                                        searchScore >= 80
+                                            ? 'bg-lime-500'
+                                            : searchScore >= 60
+                                            ? 'bg-yellow-500'
+                                            : 'bg-gray-500'
+                                    }`}
+                                    style={{
+                                        left: `${(clipStart / duration) * 100}%`,
+                                        width: `${((clipEnd - clipStart) / duration) * 100}%`
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* Priority Indicator */}
-                <div className="absolute bottom-3 right-3">
-                    <div className={`w-3 h-3 rounded-full ${getPriorityColor(clipPriority)} shadow-lg`}></div>
-                </div>
+                {/* Regular badges for non-search results */}
+                {!isSearchResult && (
+                    <>
+                        {/* Duration Badge */}
+                        {actualDuration && (
+                            <div className="absolute bottom-3 left-3 bg-black/80 text-white px-3 py-1 rounded-lg text-sm font-medium backdrop-blur-sm">
+                                {isClip ? `${formatDuration(actualDuration)} clip` : formatDuration(actualDuration)}
+                            </div>
+                        )}
 
-                {/* Search Score Badge */}
-                {searchScore && (
-                    <div className="absolute top-3 left-3 bg-lime-500 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-lg backdrop-blur-sm">
-                        {searchScore.toFixed(1)}
-                    </div>
+                        {/* Priority Indicator */}
+                        <div className="absolute bottom-3 right-3">
+                            <div className={`w-3 h-3 rounded-full ${getPriorityColor(clipPriority)} shadow-lg`}></div>
+                        </div>
+
+                        {/* Search Score Badge */}
+                        {searchScore && (
+                            <div className="absolute top-3 left-3 bg-lime-500 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-lg backdrop-blur-sm">
+                                {searchScore.toFixed(1)}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
 
-            {/* Card Content */}
-            <div className="p-5">
-                {/* Title */}
-                <h3 className="font-bold text-lg text-gray-900 font-inter mb-3 group-hover:text-lime-600 transition-colors duration-300 line-clamp-2">
-                    {name || 'Untitled Video'}
-                </h3>
-                
-                {/* Metadata */}
-                <div className="space-y-3 mb-4">
-                    {/* Date */}
-                    {createdAt && (
-                        <div className="flex items-center space-x-2 text-sm text-gray-600">
-                            <CalendarIcon className="h-4 w-4 text-gray-400" />
-                            <span className="font-medium">{formatDate(createdAt)}</span>
-                        </div>
-                    )}
-                    
-                    {/* Duration */}
-                    {duration && (
-                        <div className="flex items-center space-x-2 text-sm text-gray-600">
-                            <ClockIcon className="h-4 w-4 text-gray-400" />
-                            <span>Duration: {formatDuration(duration)}</span>
-                        </div>
-                    )}
 
-                    {/* Search Score */}
-                    {searchScore && (
-                        <div className="flex items-center space-x-2 text-sm">
-                            <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 bg-lime-500 rounded-full"></div>
-                                <span className="text-gray-600">Relevance:</span>
-                                <span className="font-bold text-lime-600">{searchScore.toFixed(1)}</span>
-                                {searchConfidence && (
-                                    <span className="text-xs text-gray-500 capitalize">({searchConfidence})</span>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Tags Section */}
-                <div className="flex items-center justify-between mb-4">
-                    {/* Category Tag */}
-                    <div className="flex items-center space-x-2">
-                        <TagIcon className="h-4 w-4 text-gray-400" />
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getCategoryColor(clipCategory)}`}>
-                            {clipCategory.charAt(0).toUpperCase() + clipCategory.slice(1)}
-                        </span>
-                    </div>
-                    
-                    {/* Priority */}
-                    <div className="flex items-center space-x-2">
-                        <ExclamationTriangleIcon className="h-4 w-4 text-gray-400" />
-                        <div className="flex items-center space-x-1">
-                            <div className={`w-2 h-2 rounded-full ${getPriorityColor(clipPriority)}`}></div>
-                            <span className="text-xs text-gray-500 capitalize font-medium">{clipPriority} Priority</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* VSS ID Footer */}
-                {vss_id && (
-                    <div className="pt-3 border-t border-gray-100">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-400 font-mono">
-                                VSS: {vss_id.substring(0, 12)}...
-                            </span>
-                            <div className="flex items-center space-x-1">
-                                <div className="w-2 h-2 bg-lime-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs text-gray-500">Active</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Click to view indicator */}
-                <div className="mt-3 pt-3 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="flex items-center justify-center text-xs text-gray-500">
-                        <span>Click to view full details</span>
-                    </div>
-                </div>
-            </div>
+            {/* Title Below Video */}
+            <p className="text-base text-gray-900 truncate mt-2 font-inter">
+                {name || 'Untitled Video'}
+            </p>
         </div>
     );
 }
