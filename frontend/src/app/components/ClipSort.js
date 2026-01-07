@@ -2,15 +2,16 @@
 
 import React from 'react';
 import { useState, useEffect } from 'react';
-import { 
-  MagnifyingGlassIcon, 
+import {
+  MagnifyingGlassIcon,
   FunnelIcon,
   CalendarDaysIcon,
   ClockIcon,
   TagIcon,
   ExclamationTriangleIcon,
   ChevronDownIcon,
-  SparklesIcon
+  SparklesIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 export default function ClipSort({ clipData = [], onFilterChange }) {
@@ -23,7 +24,6 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   const [isSearching, setIsSearching] = useState(false);
 
   const exampleQueries = [
-    "Surgeon executing surgery",
     "Using scissors to cut tissue",
     "Grasper holding organ",
     "Bleeding or hemorrhage during procedure",
@@ -54,14 +54,10 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     { value: 'low', label: 'Low Priority', color: 'bg-green-500' }
   ];
 
-  const handleExampleClick = async (example) => {
+  const handleExampleClick = (example) => {
     setSearchQuery(example);
     setShowExamples(false);
-    // Trigger search when example is clicked
-    const filteredClips = await filterAndSortClips(clipData);
-    if (onFilterChange) {
-      onFilterChange(filteredClips, true); // true = isSearch
-    }
+    // Don't trigger search automatically - user needs to click Search button
   };
 
   // Mock function to determine category based on filename or content
@@ -94,10 +90,10 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
       // Convert clips to array if it's an object
       return Array.isArray(clips) ? clips : Object.values(clips);
     }
-    
+
     setIsSearching(true);
     try {
-      
+
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,16 +109,16 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
       const sortedData = json_data.sort((a, b) => b.score - a.score);
 
       console.log("Sorted data:", sortedData);
-      
+
       // Convert clips to array if it's an object
       const clipsArray = Array.isArray(clips) ? clips : Object.values(clips);
 
       console.log("Clips array:", clipsArray);
-      
+
       // Debug: Log the IDs we're trying to match
       console.log("Search result videoIds:", sortedData.map(r => r.videoId));
       console.log("Clip IDs:", clipsArray.map(c => ({ id: c.id, vss_id: c.vss_id, systemMetadata_vss_id: c.systemMetadata?.vss_id })));
-      
+
       // First, deduplicate results by videoId, keeping the highest scoring one
       const deduplicatedResults = sortedData.reduce((acc, result) => {
         const existing = acc.find(r => r.videoId === result.videoId);
@@ -169,9 +165,9 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
         }
         return null;
       }).filter(Boolean); // Remove any undefined results
-      
+
       return sortedClips;
-      
+
     } catch (error) {
       console.error('Search error:', error);
       // Convert clips to array if it's an object
@@ -251,11 +247,22 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     }
   };
 
+  // Clear search and reset to original data
+  const handleClearSearch = async () => {
+    setSearchQuery('');
+    setShowExamples(false);
+    // Reset to original clip data without search
+    if (onFilterChange) {
+      const filteredClips = await filterAndSortClips(clipData);
+      onFilterChange(filteredClips, false); // false = not a search
+    }
+  };
+
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm sticky top-24 z-40">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
-          
+
           {/* Semantic Search - Main Feature */}
           <div className="flex-1">
             <div className="relative">
@@ -263,7 +270,7 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                 <SparklesIcon className="inline h-4 w-4 mr-2 text-lime-500" />
                 AI-Powered Semantic Search
               </label>
-              
+
               {/* Search Input */}
               <div className="relative">
                 <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -276,9 +283,20 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                   placeholder="Search surgical videos by procedure, tools, or techniques..."
                   className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all duration-200 font-inter placeholder-gray-500"
                 />
-                
+
+                {/* Clear Button - Only show when there's text */}
+                {searchQuery && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="cursor-pointer absolute right-32 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-2 rounded-full hover:bg-gray-100"
+                    aria-label="Clear search"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                )}
+
                 {/* Search Button */}
-                <button 
+                <button
                   onClick={handleSearch}
                   disabled={isSearching}
                   className="cursor-pointer absolute right-2 top-1/2 transform -translate-y-1/2 bg-lime-500 hover:bg-lime-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-all duration-200 font-medium font-inter"
@@ -290,8 +308,8 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
               {/* Example Queries Dropdown */}
               {showExamples && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-30" 
+                  <div
+                    className="fixed inset-0 z-30"
                     onClick={() => setShowExamples(false)}
                   ></div>
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-200 z-40 animate-in slide-in-from-top-2 duration-200">
@@ -319,7 +337,7 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
 
           {/* Sorting Controls */}
           <div className="flex flex-wrap gap-4 lg:flex-nowrap">
-            
+
             {/* Sort By Dropdown */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 font-inter mb-3">
@@ -335,7 +353,7 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                   <span>{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
                   <ChevronDownIcon className="h-4 w-4 ml-auto" />
                 </button>
-                
+
                 {showSortDropdown && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setShowSortDropdown(false)}></div>
@@ -399,7 +417,7 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
           </div>
         </div>
 
-        
+
       </div>
     </div>
   );

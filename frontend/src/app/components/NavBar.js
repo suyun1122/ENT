@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter, usePathname } from "next/navigation";
 import {
   BellIcon,
   HomeIcon,
@@ -11,9 +12,21 @@ import {
 
 export default function NavBar() {
   const [showNotifications, setShowNotifications] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const toggleNotifications = () => {
     setShowNotifications(!showNotifications);
+  };
+
+  const handleDashboardClick = (e) => {
+    e.preventDefault();
+    // If already on /clips page, refresh to reset search state
+    if (pathname === '/clips') {
+      window.location.href = '/clips';
+    } else {
+      router.push('/clips');
+    }
   };
 
   return (
@@ -72,6 +85,7 @@ export default function NavBar() {
             {/* Dashboard Button - Now points to /clips */}
             <Link
               href="/clips"
+              onClick={handleDashboardClick}
               className="flex flex-row items-center space-x-3 px-6 py-4 rounded-xl text-lg font-medium font-inter text-gray-700 hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ease-in-out hover:shadow-md group"
             >
               <HomeIcon className="h-6 w-6 flex-shrink-0" />

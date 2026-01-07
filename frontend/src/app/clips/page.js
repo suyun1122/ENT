@@ -128,35 +128,6 @@ export default function Clips() {
 
       {/* Header Section */}
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className={`transition-all duration-1000 ease-out ${
-          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-        }`}>
-
-          {/* Description */}
-          <div className={`transition-all duration-1000 delay-200 ease-out ${
-            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-          }`}>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-                <h1 className="text-4xl font-bold text-gray-900 font-inter tracking-tight mb-4">
-                    Clip Storage
-                </h1>
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <CpuChipIcon className="h-6 w-6 text-lime-600 mt-1" />
-                </div>
-                <div>
-                  <p className="text-lg text-gray-700 font-inter leading-relaxed">
-                    Video clips are automatically saved from your connected cameras from CV Pipeline and analyzed by
-                    <span className="font-semibold text-lime-600"> Twelve Labs Pegasus</span>.
-                    Clips are automatically indexed and can be searched semantically with Twelve Labs Marengo model above!
-                  </p>
-
-
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Video Grid */}
         <div className={`transition-all duration-1000 delay-800 ease-out ${
