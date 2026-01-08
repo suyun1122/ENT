@@ -544,6 +544,7 @@ export default function ClipDetailPage({ params }) {
                         clipData={clipData}
                         buttonMetadata={buttonMetadata}
                         videoId={clipData['pegasusId']}
+                        initialAnalysisData={cachedData?.data}
                     />
                 ) : (
                     <div className="absolute inset-0 top-16 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-slate-100 z-40">

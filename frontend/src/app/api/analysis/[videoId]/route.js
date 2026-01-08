@@ -106,7 +106,14 @@ export async function GET(request, { params }) {
             const blobInfo = await head(`analysis/${videoId}.json`);
             if (blobInfo) {
                 console.log('[Surgical Analysis] Found in Vercel Blob');
-                const response = await fetch(blobInfo.url);
+                // Add cache-busting and no-cache headers to ensure fresh data
+                const response = await fetch(blobInfo.url + `?t=${Date.now()}`, {
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    }
+                });
                 const analysisData = await response.text();
                 return NextResponse.json({
                     status: 'completed',
@@ -152,6 +159,135 @@ export async function GET(request, { params }) {
         videoId,
         message: 'Surgical analysis has not been run.'
     });
+}
+
+export async function PATCH(request, { params }) {
+    const { videoId } = await params;
+
+    if (!videoId) {
+        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    try {
+        const body = await request.json();
+        const { SOAP } = body;
+
+        if (!SOAP) {
+            return NextResponse.json({ error: 'SOAP data is required' }, { status: 400 });
+        }
+
+        console.log('[Surgical Analysis] PATCH request - updating SOAP note for video:', videoId);
+
+        // 1. Try to load existing data from Vercel Blob first
+        let existingData = null;
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const blobInfo = await head(`analysis/${videoId}.json`);
+                if (blobInfo) {
+                    const response = await fetch(blobInfo.url);
+                    existingData = JSON.parse(await response.text());
+                    console.log('[Surgical Analysis] Loaded existing data from Blob');
+                }
+            } catch (error) {
+                console.warn('[Surgical Analysis] Failed to load from Blob:', error.message);
+            }
+        }
+
+        // 2. If not in Blob, try local filesystem
+        if (!existingData) {
+            const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+            if (fs.existsSync(analysisPath)) {
+                existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+                console.log('[Surgical Analysis] Loaded existing data from filesystem');
+            }
+        }
+
+        if (!existingData) {
+            return NextResponse.json({
+                error: 'Analysis data not found. Please generate analysis first.'
+            }, { status: 404 });
+        }
+
+        // 3. Update SOAP note
+        const updatedData = {
+            ...existingData,
+            operative_note: {
+                ...existingData.operative_note,
+                SOAP: {
+                    ...existingData.operative_note.SOAP,
+                    ...SOAP
+                }
+            }
+        };
+
+        // 4. Save to Vercel Blob (primary storage for production)
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const blobPath = `analysis/${videoId}.json`;
+
+                // Delete existing blob first to avoid "blob already exists" error
+                try {
+                    await del(blobPath);
+                    console.log('[Surgical Analysis] Deleted existing blob before update');
+                    // Longer delay to ensure deletion is fully processed and CDN cache is cleared
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (delError) {
+                    console.log('[Surgical Analysis] No existing blob to delete or delete failed:', delError.message);
+                    // Still wait a bit in case of timing issues
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+
+                // Create new blob with updated data
+                const blob = await put(
+                    blobPath,
+                    JSON.stringify(updatedData, null, 2),
+                    {
+                        access: 'public',
+                        contentType: 'application/json',
+                        addRandomSuffix: false,
+                        cacheControlMaxAge: 0 // Disable CDN caching for frequently updated files
+                    }
+                );
+                console.log('[Surgical Analysis] Successfully saved to Vercel Blob:', blob.url);
+                console.log('[Surgical Analysis] Updated SOAP sections:', Object.keys(SOAP));
+            } catch (blobError) {
+                console.error('[Surgical Analysis] Failed to update Blob:', blobError);
+                throw new Error(`Failed to save to Blob Storage: ${blobError.message}`);
+            }
+        } else {
+            // 5. Fallback to local filesystem (development only)
+            try {
+                const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+                const dir = path.dirname(localOutputPath);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                fs.writeFileSync(localOutputPath, JSON.stringify(updatedData, null, 2));
+                console.log('[Surgical Analysis] Updated local file (development mode)');
+            } catch (fsError) {
+                console.error('[Surgical Analysis] Failed to update local file:', fsError);
+                // In production (read-only filesystem), this is expected - don't throw error
+                if (process.env.VERCEL) {
+                    console.log('[Surgical Analysis] Skipping local file save in production (read-only filesystem)');
+                } else {
+                    throw fsError;
+                }
+            }
+        }
+
+        return NextResponse.json({
+            status: 'success',
+            message: 'SOAP note updated successfully',
+            data: updatedData
+        });
+
+    } catch (error) {
+        console.error('[Surgical Analysis] Error updating SOAP note:', error);
+        return NextResponse.json({
+            error: 'Failed to update SOAP note',
+            details: error.message
+        }, { status: 500 });
+    }
 }
 
 export async function POST(request, { params }) {

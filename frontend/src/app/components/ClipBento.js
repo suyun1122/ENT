@@ -40,7 +40,7 @@ const DEFAULT_GEOLOCATION = HAS_DEFAULT_GEO
     ? { coords: { latitude: DEFAULT_LAT, longitude: DEFAULT_LON } }
     : null;
 
-export default function ClipBento({ clipData, buttonMetadata, videoId }) {
+export default function ClipBento({ clipData, buttonMetadata, videoId, initialAnalysisData }) {
   const [operatingNote, setOperatingNote] = useState(null);
   const [chapters, setChapters] = useState(null);
     const [forensicsData, setForensicsData] = useState(null);
@@ -210,6 +210,16 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     const loadSurgicalAnalysis = async () => {
       if (!videoId) return;
 
+      // If we have initialAnalysisData from parent component, use it first
+      if (initialAnalysisData) {
+        console.log('[Surgical Analysis] Using initial data from parent component');
+        setSurgicalAnalysisData(initialAnalysisData);
+        setSurgicalAnalysisProgress(100);
+        setSurgicalAnalysisStage('completed');
+        setIsLoadingSurgicalAnalysis(false);
+        return;
+      }
+
       setIsLoadingSurgicalAnalysis(true);
       setSurgicalAnalysisError(null);
       setSurgicalAnalysisProgress(0);
@@ -232,7 +242,12 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
 
         // 2. Static file not found, check API (Blob storage or processing)
         console.log('[Surgical Analysis] Static file not found, checking API...');
-        const response = await fetch(`/api/analysis/${videoId}`);
+        const response = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
         const data = await response.json();
 
         if (data.status === "completed") {
@@ -263,7 +278,7 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     };
 
     loadSurgicalAnalysis();
-  }, [videoId]);
+  }, [videoId, initialAnalysisData]);
 
   // Poll surgical analysis status
   const pollSurgicalAnalysis = async (videoId) => {
@@ -272,7 +287,9 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/analysis/${videoId}`);
+        const response = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, {
+          cache: 'no-store'
+        });
         const data = await response.json();
 
         if (data.status === "completed") {
@@ -371,18 +388,71 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     }));
   };
 
-  const handleSaveSOAP = (section) => {
-    setOperatingNote((prev) => ({
-      ...prev,
-      SOAP: {
-        ...prev.SOAP,
+  const handleSaveSOAP = async (section) => {
+    try {
+      // Update local state immediately for better UX
+      const updatedSOAP = {
+        ...operatingNote.SOAP,
         [section]: editedSOAP[section],
-      },
-    }));
-    setIsEditingSOAP((prev) => ({
-      ...prev,
-      [section]: false,
-    }));
+      };
+
+      setOperatingNote((prev) => ({
+        ...prev,
+        SOAP: updatedSOAP,
+      }));
+
+      setIsEditingSOAP((prev) => ({
+        ...prev,
+        [section]: false,
+      }));
+
+      // Save to server
+      const response = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        body: JSON.stringify({
+          SOAP: updatedSOAP,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[SOAP Note] Server error response:', errorData);
+        throw new Error(errorData.error || errorData.details || `Server returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[SOAP Note] Saved successfully:', data);
+      console.log('[SOAP Note] Server returned SOAP:', data.data?.operative_note?.SOAP);
+
+      // Update surgical analysis data to keep it in sync
+      if (data.data) {
+        // Force update both states to ensure consistency
+        setSurgicalAnalysisData(data.data);
+        setOperatingNote(data.data.operative_note);
+        console.log('[SOAP Note] Updated states with server response');
+        console.log('[SOAP Note] New operatingNote.SOAP:', data.data.operative_note.SOAP);
+      }
+    } catch (error) {
+      console.error('[SOAP Note] Error saving:', error);
+
+      // Try to get more detailed error message
+      let errorMessage = 'Failed to save SOAP note. Please try again.';
+      if (error.message) {
+        errorMessage += `\n\nError: ${error.message}`;
+      }
+
+      alert(errorMessage);
+
+      // Revert to original value on error
+      setEditedSOAP((prev) => ({
+        ...prev,
+        [section]: operatingNote.SOAP[section],
+      }));
+    }
   };
 
   const handleCancelEdit = (section) => {

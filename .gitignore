@@ -25,3 +25,4 @@ __pycache__*
 /runs/
 /cv_model/training_scripts/surgical_tool_training_runs/
 /cv_model/training_scripts/*.pt
+.vercel
