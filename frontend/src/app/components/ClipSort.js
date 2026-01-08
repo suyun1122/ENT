@@ -7,21 +7,19 @@ import {
   FunnelIcon,
   CalendarDaysIcon,
   ClockIcon,
-  TagIcon,
-  ExclamationTriangleIcon,
   ChevronDownIcon,
   SparklesIcon,
-  XMarkIcon
+  XMarkIcon,
+  StarIcon
 } from '@heroicons/react/24/outline';
 
 export default function ClipSort({ clipData = [], onFilterChange }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showExamples, setShowExamples] = useState(false);
   const [sortBy, setSortBy] = useState('date');
-  const [category, setCategory] = useState('all');
-  const [criticalLevel, setCriticalLevel] = useState('all');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasSearchResults, setHasSearchResults] = useState(false);
 
   const exampleQueries = [
     "Using scissors to cut tissue",
@@ -33,55 +31,22 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     "Removing gallbladder or organs"
   ];
 
-  const sortOptions = [
-    { value: 'date', label: 'Date', icon: CalendarDaysIcon },
-    { value: 'time', label: 'Time', icon: ClockIcon },
-    { value: 'category', label: 'Category', icon: TagIcon },
-    { value: 'critical', label: 'Critical Level', icon: ExclamationTriangleIcon }
-  ];
-
-  const categories = [
-    { value: 'all', label: 'All Categories' },
-    { value: 'surgical', label: 'Surgical Technique', color: 'bg-blue-100 text-blue-800' },
-    { value: 'tools', label: 'Surgical Tools', color: 'bg-green-100 text-green-800' },
-    { value: 'complications', label: 'Complications', color: 'bg-red-100 text-red-800' }
-  ];
-
-  const criticalLevels = [
-    { value: 'all', label: 'All Levels' },
-    { value: 'high', label: 'High Priority', color: 'bg-red-500' },
-    { value: 'medium', label: 'Medium Priority', color: 'bg-yellow-500' },
-    { value: 'low', label: 'Low Priority', color: 'bg-green-500' }
-  ];
+  // Sort options - include Score only when search results are shown
+  const sortOptions = hasSearchResults
+    ? [
+        { value: 'score', label: 'Score', icon: StarIcon },
+        { value: 'date', label: 'Date', icon: CalendarDaysIcon },
+        { value: 'duration', label: 'Duration', icon: ClockIcon }
+      ]
+    : [
+        { value: 'date', label: 'Date', icon: CalendarDaysIcon },
+        { value: 'duration', label: 'Duration', icon: ClockIcon }
+      ];
 
   const handleExampleClick = (example) => {
     setSearchQuery(example);
     setShowExamples(false);
     // Don't trigger search automatically - user needs to click Search button
-  };
-
-  // Mock function to determine category based on filename or content
-  const getCategoryFromClip = (clip) => {
-    const filename = clip.filename?.toLowerCase() || '';
-    if (filename.includes('tool') || filename.includes('scissors') || filename.includes('grasper') || filename.includes('clipper')) {
-      return 'tools';
-    } else if (filename.includes('complication') || filename.includes('bleeding') || filename.includes('hemorrhage') || filename.includes('error')) {
-      return 'complications';
-    } else if (filename.includes('surgery') || filename.includes('surgical') || filename.includes('technique') || filename.includes('sutur')) {
-      return 'surgical';
-    }
-    return 'surgical';
-  };
-
-  // Mock function to determine priority based on content analysis
-  const getPriorityFromClip = (clip) => {
-    const filename = clip.filename?.toLowerCase() || '';
-    if (filename.includes('complication') || filename.includes('bleeding') || filename.includes('emergency') || filename.includes('critical')) {
-      return 'high';
-    } else if (filename.includes('caution') || filename.includes('technique') || filename.includes('warning')) {
-      return 'medium';
-    }
-    return 'low';
   };
 
   // Search function - integrates with Twelve Labs API
@@ -188,28 +153,22 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
       filteredClips = await performSemanticSearch(searchQuery, clipsArray);
     }
 
-    // Apply category filter
-    if (category !== 'all') {
-      filteredClips = filteredClips.filter(clip => getCategoryFromClip(clip) === category);
-    }
-
-    // Apply priority filter
-    if (criticalLevel !== 'all') {
-      filteredClips = filteredClips.filter(clip => getPriorityFromClip(clip) === criticalLevel);
-    }
-
     // Apply sorting
     filteredClips.sort((a, b) => {
       switch (sortBy) {
         case 'date':
           return new Date(b.createdAt) - new Date(a.createdAt);
-        case 'time':
-          return (b.duration || 0) - (a.duration || 0);
-        case 'category':
-          return getCategoryFromClip(a).localeCompare(getCategoryFromClip(b));
-        case 'critical':
-          const priorityOrder = { high: 3, medium: 2, low: 1 };
-          return priorityOrder[getPriorityFromClip(b)] - priorityOrder[getPriorityFromClip(a)];
+        case 'duration':
+          // For clips with time ranges, use clip duration; otherwise use full duration
+          const aDuration = (a.isClip && a.clipEnd !== undefined && a.clipStart !== undefined)
+            ? (a.clipEnd - a.clipStart)
+            : (a.duration || 0);
+          const bDuration = (b.isClip && b.clipEnd !== undefined && b.clipStart !== undefined)
+            ? (b.clipEnd - b.clipStart)
+            : (b.duration || 0);
+          return bDuration - aDuration;
+        case 'score':
+          return (b.searchScore || 0) - (a.searchScore || 0);
         default:
           return 0;
       }
@@ -229,12 +188,16 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     };
 
     applyFilters();
-  }, [sortBy, category, criticalLevel, clipData]);
+  }, [sortBy, clipData]);
 
   // Handle search button click
   const handleSearch = async () => {
     const filteredClips = await filterAndSortClips(clipData);
     const hasSearch = searchQuery.trim() !== '';
+    if (hasSearch) {
+      setHasSearchResults(true);
+      setSortBy('score'); // Default to score when search results are shown
+    }
     if (onFilterChange) {
       onFilterChange(filteredClips, hasSearch);
     }
@@ -251,6 +214,8 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   const handleClearSearch = async () => {
     setSearchQuery('');
     setShowExamples(false);
+    setHasSearchResults(false);
+    setSortBy('date'); // Reset to date sorting when clearing search
     // Reset to original clip data without search
     if (onFilterChange) {
       const filteredClips = await filterAndSortClips(clipData);
@@ -375,44 +340,6 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                   </>
                 )}
               </div>
-            </div>
-
-            {/* Category Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 font-inter mb-3">
-                <TagIcon className="inline h-4 w-4 mr-2" />
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium font-inter text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-36"
-              >
-                {categories.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Critical Level Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 font-inter mb-3">
-                <ExclamationTriangleIcon className="inline h-4 w-4 mr-2" />
-                Priority
-              </label>
-              <select
-                value={criticalLevel}
-                onChange={(e) => setCriticalLevel(e.target.value)}
-                className="px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium font-inter text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-36"
-              >
-                {criticalLevels.map((level) => (
-                  <option key={level.value} value={level.value}>
-                    {level.label}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </div>

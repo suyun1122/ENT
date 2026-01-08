@@ -1,0 +1,8 @@
+# Exclude large video files from deployment
+# Videos are served via Twelve Labs HLS streaming
+public/videos/
+
+# Exclude analysis and detection files after migration to Blob Storage
+# Uncomment these after successful migration:
+# public/analysis/
+# public/detections/

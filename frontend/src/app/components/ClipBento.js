@@ -23,6 +23,7 @@ import {
   UserIcon,
   ClipboardDocumentListIcon,
   PencilIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import ClickableVideo from "./ClickableVideo";
 import ClipChat from "./ClipChat";
@@ -301,6 +302,32 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
     };
 
     poll();
+  };
+
+  // Refresh surgical analysis - force re-analysis from Twelve Labs API
+  const refreshSurgicalAnalysis = async () => {
+    if (!videoId) return;
+
+    setIsLoadingSurgicalAnalysis(true);
+    setSurgicalAnalysisError(null);
+    setSurgicalAnalysisProgress(0);
+    setSurgicalAnalysisStage('initializing');
+    setSurgicalAnalysisData(null);
+    setOperatingNote(null);
+    setChapters(null);
+
+    try {
+      console.log('[Surgical Analysis] Force refresh - fetching new data from Twelve Labs API...');
+      // Use force=true parameter to bypass cache and fetch fresh data from Twelve Labs
+      const startResponse = await fetch(`/api/analysis/${videoId}?force=true`, { method: "POST" });
+      const startData = await startResponse.json();
+      console.log('[Surgical Analysis] Force refresh started:', startData);
+      pollSurgicalAnalysis(videoId);
+    } catch (error) {
+      console.error('[Surgical Analysis] Error refreshing:', error);
+      setSurgicalAnalysisError(error.message);
+      setIsLoadingSurgicalAnalysis(false);
+    }
   };
 
   // Update state when query data changes
@@ -862,13 +889,24 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
             <ClockIcon className="h-5 w-5 text-blue-500" />
             <span>Surgical Phase Timeline</span>
           </h3>
-          {chapters && chapters.length > 0 && (
-            <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg">
-              <span className="text-sm font-medium">
-                {chapters.length} Phases
-              </span>
-            </div>
-          )}
+          <div className="flex items-center space-x-2">
+            {chapters && chapters.length > 0 && (
+              <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg">
+                <span className="text-sm font-medium">
+                  {chapters.length} Phases
+                </span>
+              </div>
+            )}
+            <button
+              onClick={refreshSurgicalAnalysis}
+              disabled={isLoadingSurgicalAnalysis}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              title="Refresh timeline analysis"
+            >
+              <ArrowPathIcon className={`h-4 w-4 ${isLoadingSurgicalAnalysis ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {isLoadingChapters ? (
@@ -948,24 +986,35 @@ export default function ClipBento({ clipData, buttonMetadata, videoId }) {
                   </p>
                                 </div>
                             </div>
-              {operatingNote && operatingNote.SOAP && (
-                                        <div className="flex items-center space-x-2">
-                                            <button
-                                                onClick={exportToPDF}
-                                                className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                                            >
-                                                <ArrowDownTrayIcon className="h-4 w-4" />
-                                                <span className="text-sm font-medium">PDF</span>
-                                            </button>
-                                            <button
-                                                onClick={exportToCSV}
-                                                className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                                            >
-                                                <ArrowDownTrayIcon className="h-4 w-4" />
-                                                <span className="text-sm font-medium">CSV</span>
-                                            </button>
-                                        </div>
-                                )}
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={refreshSurgicalAnalysis}
+                                disabled={isLoadingSurgicalAnalysis}
+                                className="flex items-center space-x-2 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                title="Refresh SOAP note analysis"
+                              >
+                                <ArrowPathIcon className={`h-4 w-4 ${isLoadingSurgicalAnalysis ? 'animate-spin' : ''}`} />
+                                <span className="text-sm font-medium">Refresh</span>
+                              </button>
+                              {operatingNote && operatingNote.SOAP && (
+                                <>
+                                  <button
+                                    onClick={exportToPDF}
+                                    className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                  >
+                                    <ArrowDownTrayIcon className="h-4 w-4" />
+                                    <span className="text-sm font-medium">PDF</span>
+                                  </button>
+                                  <button
+                                    onClick={exportToCSV}
+                                    className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                  >
+                                    <ArrowDownTrayIcon className="h-4 w-4" />
+                                    <span className="text-sm font-medium">CSV</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                         </div>
                     </div>
 

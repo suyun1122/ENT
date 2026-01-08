@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import { TwelveLabs } from 'twelvelabs-js';
-import { put, head } from '@vercel/blob';
+import { put, head, del } from '@vercel/blob';
 
 const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
 const processingStatus = new Map();
@@ -161,15 +161,46 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
 
-    console.log('[Surgical Analysis] POST request for video:', videoId);
+    // Check for force refresh parameter
+    const url = new URL(request.url);
+    const force = url.searchParams.get('force') === 'true';
 
-    // Check if already processing
-    if (processingStatus.has(videoId)) {
+    console.log('[Surgical Analysis] POST request for video:', videoId, 'force:', force);
+
+    // Check if already processing (unless force is true)
+    if (processingStatus.has(videoId) && !force) {
         return NextResponse.json({
             status: 'already_processing',
             videoId,
             message: 'Surgical analysis is already being processed.'
         }, { status: 409 });
+    }
+
+    // If force refresh, delete existing cached files
+    if (force) {
+        console.log('[Surgical Analysis] Force refresh - deleting cached files');
+
+        // Delete from local filesystem
+        const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+        if (fs.existsSync(analysisPath)) {
+            fs.unlinkSync(analysisPath);
+            console.log('[Surgical Analysis] Deleted local file:', analysisPath);
+        }
+
+        // Delete from Vercel Blob Storage if available
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                await del(`analysis/${videoId}.json`);
+                console.log('[Surgical Analysis] Deleted from Vercel Blob Storage');
+            } catch (blobError) {
+                console.warn('[Surgical Analysis] Failed to delete from Vercel Blob (file may not exist):', blobError.message);
+            }
+        }
+
+        // Clear processing status if exists
+        if (processingStatus.has(videoId)) {
+            processingStatus.delete(videoId);
+        }
     }
 
     // Start processing
@@ -184,7 +215,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
         status: 'started',
         videoId,
-        message: 'Surgical analysis processing started.'
+        message: force ? 'Surgical analysis force refresh started.' : 'Surgical analysis processing started.'
     });
 }
 
