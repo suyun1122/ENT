@@ -21,6 +21,59 @@ export default function UploadVideo() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStage, setUploadStage] = useState(''); // 'generating', 'uploading', 'indexing'
 
+  // Poll for indexing status
+  const pollIndexingStatus = async (taskId, blobUrl) => {
+    const POLL_INTERVAL = 5000; // 5 seconds
+    const MAX_POLLS = 120; // 10 minutes max (120 * 5s)
+    let pollCount = 0;
+
+    return new Promise((resolve, reject) => {
+      const checkStatus = async () => {
+        try {
+          pollCount++;
+          console.log(`[Indexing Status] Polling ${pollCount}/${MAX_POLLS}...`);
+
+          const response = await fetch(`/api/upload/status/${taskId}`);
+          const data = await response.json();
+
+          console.log(`[Indexing Status] Status: ${data.status}`);
+
+          if (data.status === 'ready') {
+            // Indexing complete - cleanup blob
+            console.log('[Indexing Status] Video ready! Cleaning up blob...');
+            try {
+              await fetch(`/api/upload/status/${taskId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blobUrl }),
+              });
+            } catch (cleanupError) {
+              console.warn('[Indexing Status] Blob cleanup failed:', cleanupError);
+            }
+            resolve(data.videoId);
+          } else if (data.status === 'failed') {
+            reject(new Error('Video indexing failed'));
+          } else if (pollCount >= MAX_POLLS) {
+            reject(new Error('Indexing timeout - please check video status later'));
+          } else {
+            // Still processing - continue polling
+            setTimeout(checkStatus, POLL_INTERVAL);
+          }
+        } catch (error) {
+          console.error('[Indexing Status] Poll error:', error);
+          if (pollCount >= MAX_POLLS) {
+            reject(error);
+          } else {
+            // Retry on error
+            setTimeout(checkStatus, POLL_INTERVAL);
+          }
+        }
+      };
+
+      checkStatus();
+    });
+  };
+
   const uploadVideo = async (file) => {
     console.log("Starting video upload via Vercel Blob...");
     setIsUploading(true);
@@ -45,10 +98,10 @@ export default function UploadVideo() {
 
       console.log("[Blob Upload] Uploaded to Blob:", blob.url);
 
-      // Step 2: Send to server for TwelveLabs indexing
+      // Step 2: Start TwelveLabs indexing (returns immediately with taskId)
       setUploadStage('indexing');
       setUploadProgress(100);
-      console.log("[Blob Upload] Step 2: Indexing via TwelveLabs...");
+      console.log("[Blob Upload] Step 2: Starting TwelveLabs indexing...");
 
       const indexResponse = await fetch("/api/upload/from-blob", {
         method: "POST",
@@ -63,12 +116,16 @@ export default function UploadVideo() {
 
       if (!indexResponse.ok) {
         const errorData = await indexResponse.json();
-        throw new Error(errorData.error || "Failed to index video");
+        throw new Error(errorData.error || "Failed to start indexing");
       }
 
       const indexData = await indexResponse.json();
-      const videoId = indexData.videoId;
-      console.log("[Blob Upload] Video indexed successfully:", indexData);
+      console.log("[Blob Upload] Indexing started, taskId:", indexData.taskId);
+
+      // Step 3: Poll for indexing completion
+      console.log("[Blob Upload] Step 3: Polling for indexing completion...");
+      const videoId = await pollIndexingStatus(indexData.taskId, blob.url);
+      console.log("[Blob Upload] Video indexed successfully, videoId:", videoId);
 
       // Show success modal
       setTimeout(() => {

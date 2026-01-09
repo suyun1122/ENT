@@ -1,6 +1,5 @@
 import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
-import { del } from '@vercel/blob';
 
 // Lazy initialization to avoid build-time errors
 let twelvelabs_client = null;
@@ -51,53 +50,16 @@ export async function POST(request) {
 
         console.log('[Upload from Blob] Task created, Task ID:', task.id);
 
-        // Wait for indexing to complete
-        console.log('[Upload from Blob] Waiting for indexing...');
-        const completedTask = await getTwelveLabsClient().tasks.waitForDone(task.id, {
-            callback: (task) => {
-                console.log(`[Upload from Blob] Status: ${task.status}, Estimated time: ${task.estimatedTime || 0}s`);
-            },
-            sleepInterval: 5000,
-        });
-
-        console.log('[Upload from Blob] Indexing finished with status:', completedTask.status);
-
-        if (completedTask.status !== 'ready') {
-            throw new Error(`Video indexing failed with status: ${completedTask.status}`);
-        }
-
-        const videoId = completedTask.videoId;
-        console.log('[Upload from Blob] Video indexed successfully, Video ID:', videoId);
-
-        // Delete temp video from Blob
-        try {
-            await del(blobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN });
-            console.log('[Upload from Blob] Deleted temp video from Blob');
-        } catch (deleteError) {
-            console.warn('[Upload from Blob] Failed to delete temp video from Blob:', deleteError);
-        }
-
-        // Trigger tool detection and surgical analysis in parallel
-        console.log('[Upload from Blob] Triggering post-processing...');
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-
-        // Start tool detection with blobUrl (but video is already deleted, so skip for now)
-        // Tool detection will need to be handled differently
-        Promise.allSettled([
-            fetch(`${baseUrl}/api/analysis/${videoId}`, { method: 'POST' })
-                .then(res => {
-                    if (res.ok) console.log('[Upload from Blob] Surgical analysis started');
-                    else console.warn('[Upload from Blob] Surgical analysis failed to start');
-                })
-                .catch(err => console.warn('[Upload from Blob] Surgical analysis error:', err))
-        ]);
-
+        // Return immediately with task ID - don't wait for indexing
+        // Frontend will poll for status
         return NextResponse.json({
             success: true,
-            message: 'Video uploaded and indexed successfully',
-            videoId: videoId,
+            message: 'Video upload started, indexing in progress',
+            taskId: task.id,
+            blobUrl: blobUrl,
             filename: filename,
-        }, { status: 200 });
+            status: 'indexing',
+        }, { status: 202 }); // 202 Accepted
 
     } catch (error) {
         console.error('[Upload from Blob] Error:', error);
