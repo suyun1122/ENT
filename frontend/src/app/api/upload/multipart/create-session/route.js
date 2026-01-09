@@ -29,7 +29,7 @@ export async function POST(request) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                file_name: filename,
+                filename: filename,
                 file_size: fileSize,
             }),
         });
