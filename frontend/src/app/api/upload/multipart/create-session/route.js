@@ -30,7 +30,8 @@ export async function POST(request) {
             },
             body: JSON.stringify({
                 filename: filename,
-                file_size: fileSize,
+                total_size: fileSize,
+                type: 'video',
             }),
         });
 
