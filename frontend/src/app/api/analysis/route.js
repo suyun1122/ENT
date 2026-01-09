@@ -1,6 +1,13 @@
 import { TwelveLabs, TwelvelabsApi } from 'twelvelabs-js';
 
-const twelvelabs_client = new TwelveLabs({apiKey: process.env.TWELVELABS_API_KEY});
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function POST(request) {
 
@@ -10,7 +17,7 @@ export async function POST(request) {
 
     try {
         // Call TwelveLabs API (caching is handled by TanStack Query on the client)
-        const response = await twelvelabs_client.analyze({
+        const response = await getTwelveLabsClient().analyze({
             videoId: videoId,
             prompt: userQuery,
             temperature: 0.2

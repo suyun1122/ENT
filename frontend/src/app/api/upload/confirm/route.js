@@ -1,7 +1,14 @@
 import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
 
-const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function POST(request) {
     try {
@@ -25,7 +32,7 @@ export async function POST(request) {
         }
 
         // Create task with video URL
-        const task = await twelvelabs_client.tasks.create({
+        const task = await getTwelveLabsClient().tasks.create({
             indexId: indexId,
             url: uploadUrl,
         });
@@ -34,7 +41,7 @@ export async function POST(request) {
 
         // Wait for indexing to complete
         console.log('[Upload Confirm] Waiting for indexing to complete...');
-        const completedTask = await twelvelabs_client.tasks.waitForDone(task.id, {
+        const completedTask = await getTwelveLabsClient().tasks.waitForDone(task.id, {
             callback: (task) => {
                 console.log(`[Upload Confirm] Status: ${task.status}, Estimated time: ${task.estimatedTime || 0}s`);
             },

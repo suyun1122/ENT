@@ -1,12 +1,19 @@
 import { TwelveLabs } from "twelvelabs-js";
 
-const twelvelabs_client = new TwelveLabs({apiKey: process.env.TWELVELABS_API_KEY});
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function POST(request) {
 
     const { query, groupBy, threshold } = await request.json();
 
-    const response = await twelvelabs_client.search.query({
+    const response = await getTwelveLabsClient().search.query({
         indexId: process.env.NEXT_PUBLIC_TWELVELABS_MARENGO_INDEX_ID,
         searchOptions: ['visual', 'audio'],
         queryText: query,

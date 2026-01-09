@@ -2,7 +2,14 @@ import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 
-const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function POST(request) {
     try {
@@ -34,7 +41,7 @@ export async function POST(request) {
 
         // Upload to TwelveLabs index (single upload supports both engines)
         console.log('[Upload] Uploading to TwelveLabs index...');
-        const task = await twelvelabs_client.tasks.create({
+        const task = await getTwelveLabsClient().tasks.create({
             indexId: indexId,
             videoFile: file, // Pass the File object directly
         });
@@ -43,7 +50,7 @@ export async function POST(request) {
 
         // Wait for indexing to complete
         console.log('[Upload] Waiting for indexing to complete...');
-        const completedTask = await twelvelabs_client.tasks.waitForDone(task.id, {
+        const completedTask = await getTwelveLabsClient().tasks.waitForDone(task.id, {
             callback: (task) => {
                 console.log(`[Upload] Indexing progress - Status: ${task.status}, Estimated time remaining: ${task.estimatedTime || 0}s`);
             },

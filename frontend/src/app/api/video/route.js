@@ -1,6 +1,13 @@
 import { TwelveLabs, TwelvelabsApi } from 'twelvelabs-js';
 
-const twelvelabs_client = new TwelveLabs({apiKey: process.env.TWELVELABS_API_KEY});
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function GET(request) {
 
@@ -30,7 +37,7 @@ export async function GET(request) {
 
         // Fetch videos from Marengo index
         try {
-            const videoPager = await twelvelabs_client.indexes.videos.list(marengoIndexId);
+            const videoPager = await getTwelveLabsClient().indexes.videos.list(marengoIndexId);
             for await (const video of videoPager.data) {
                 const fileName = video.systemMetadata?.filename || video.filename || `video_${video.id}`;
                 videoList[fileName] = {
@@ -47,7 +54,7 @@ export async function GET(request) {
 
         // Fetch videos from Pegasus index
         try {
-            const videoPagerPegasus = await twelvelabs_client.indexes.videos.list(pegasusIndexId);
+            const videoPagerPegasus = await getTwelveLabsClient().indexes.videos.list(pegasusIndexId);
             for await (const video of videoPagerPegasus.data) {
                 const fileName = video.systemMetadata?.filename || video.filename || `video_${video.id}`;
                 if (videoList[fileName]) {

@@ -4,7 +4,14 @@ import fs from 'fs';
 import { TwelveLabs } from 'twelvelabs-js';
 import { put, head, del } from '@vercel/blob';
 
-const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 const processingStatus = new Map();
 
 // Surgical analysis prompt
@@ -362,7 +369,7 @@ async function processSurgicalAnalysis(videoId) {
         processingStatus.set(videoId, { progress: 10, stage: 'calling_twelvelabs_api' });
 
         // Call TwelveLabs API
-        const response = await twelvelabs_client.analyze({
+        const response = await getTwelveLabsClient().analyze({
             videoId: videoId,
             prompt: surgicalAnalysisPrompt,
             temperature: 0.2

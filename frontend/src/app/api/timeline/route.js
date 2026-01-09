@@ -1,13 +1,20 @@
 import { TwelveLabs } from "twelvelabs-js";
 
-const twelvelabs_client = new TwelveLabs({apiKey: process.env.TWELVELABS_API_KEY});
+// Lazy initialization to avoid build-time errors
+let twelvelabs_client = null;
+function getTwelveLabsClient() {
+    if (!twelvelabs_client) {
+        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
+    }
+    return twelvelabs_client;
+}
 
 export async function POST(request) {
     
     const { videoId, prompt, type } = await request.json();
 
     try {
-        const res = await twelvelabs_client.summarize({
+        const res = await getTwelveLabsClient().summarize({
             videoId: videoId,
             type: type,
             prompt: prompt,
