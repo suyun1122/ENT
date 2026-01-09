@@ -67,7 +67,7 @@ export default function UploadVideo() {
         const start = i * chunkSize;
         const end = Math.min(start + chunkSize, file.size);
         const chunk = file.slice(start, end);
-        const uploadUrl = uploadUrls[i];
+        const uploadUrl = uploadUrls[i].url;
 
         console.log(`[Multipart Upload] Uploading chunk ${i + 1}/${totalChunks}`);
 
