@@ -47,13 +47,16 @@ export async function POST(request) {
         console.log('[Multipart Upload] Asset ID:', data.asset_id);
         console.log('[Multipart Upload] Chunk size:', data.chunk_size);
         console.log('[Multipart Upload] Upload URLs:', data.upload_urls?.length);
+        console.log('[Multipart Upload] Upload Headers:', data.upload_headers);
 
         return NextResponse.json({
             success: true,
             uploadId: data.upload_id,
             assetId: data.asset_id,
             uploadUrls: data.upload_urls,
+            uploadHeaders: data.upload_headers || {},
             chunkSize: data.chunk_size,
+            totalChunks: data.total_chunks,
         });
 
     } catch (error) {

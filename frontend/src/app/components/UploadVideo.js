@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import {
   VideoCameraIcon,
   CloudArrowUpIcon,
@@ -21,152 +22,41 @@ export default function UploadVideo() {
   const [uploadStage, setUploadStage] = useState(''); // 'generating', 'uploading', 'indexing'
 
   const uploadVideo = async (file) => {
-    console.log("Starting multipart video upload...");
+    console.log("Starting video upload via Vercel Blob...");
     setIsUploading(true);
     setUploadError(null);
     setShowSuccessModal(false);
     setUploadProgress(0);
 
     try {
-      // Step 1: Create upload session
-      setUploadStage('generating');
-      console.log("[Multipart Upload] Step 1: Creating upload session...");
-
-      const sessionResponse = await fetch("/api/upload/multipart/create-session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          fileSize: file.size,
-        }),
-      });
-
-      if (!sessionResponse.ok) {
-        const errorData = await sessionResponse.json();
-        throw new Error(errorData.error || "Failed to create upload session");
-      }
-
-      const { uploadId, assetId, uploadUrls, chunkSize } = await sessionResponse.json();
-      console.log("[Multipart Upload] Session created");
-      console.log("[Multipart Upload] Upload ID:", uploadId);
-      console.log("[Multipart Upload] Asset ID:", assetId);
-      console.log("[Multipart Upload] Chunk size:", chunkSize);
-      console.log("[Multipart Upload] Upload URLs:", uploadUrls.length);
-
-      // Step 2: Split file into chunks and upload
+      // Step 1: Upload to Vercel Blob
       setUploadStage('uploading');
-      console.log("[Multipart Upload] Step 2: Uploading chunks...");
+      console.log("[Blob Upload] Step 1: Uploading to Vercel Blob...");
 
-      const totalChunks = Math.ceil(file.size / chunkSize);
-      const uploadedChunks = [];
-      let uploadedBytes = 0;
-
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, file.size);
-        const chunk = file.slice(start, end);
-        const uploadUrl = uploadUrls[i].url;
-
-        console.log(`[Multipart Upload] Uploading chunk ${i + 1}/${totalChunks}`);
-
-        // Upload chunk to presigned URL
-        const uploadResponse = await fetch(uploadUrl, {
-          method: 'PUT',
-          body: chunk,
-          headers: {
-            'Content-Type': 'application/octet-stream',
-          },
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload chunk ${i + 1}`);
-        }
-
-        // Get ETag from response
-        const etag = uploadResponse.headers.get('ETag');
-        uploadedChunks.push({
-          chunk_number: i + 1,
-          etag: etag,
-        });
-
-        // Update progress
-        uploadedBytes += chunk.size;
-        const progress = Math.round((uploadedBytes / file.size) * 100);
-        setUploadProgress(progress);
-        console.log(`[Multipart Upload] Progress: ${progress}%`);
-      }
-
-      // Step 3: Report completed chunks
-      console.log("[Multipart Upload] Step 3: Reporting uploaded chunks...");
-
-      const reportResponse = await fetch("/api/upload/multipart/report-chunks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload/blob-token',
+        onUploadProgress: (progress) => {
+          const percent = Math.round((progress.loaded / progress.total) * 100);
+          setUploadProgress(percent);
+          console.log(`[Blob Upload] Progress: ${percent}%`);
         },
-        body: JSON.stringify({
-          uploadId: uploadId,
-          chunks: uploadedChunks,
-        }),
       });
 
-      if (!reportResponse.ok) {
-        const errorData = await reportResponse.json();
-        throw new Error(errorData.error || "Failed to report chunks");
-      }
+      console.log("[Blob Upload] Uploaded to Blob:", blob.url);
 
-      console.log("[Multipart Upload] Chunks reported successfully");
-
-      // Step 4: Poll status until completed
+      // Step 2: Send to server for TwelveLabs indexing
       setUploadStage('indexing');
       setUploadProgress(100);
-      console.log("[Multipart Upload] Step 4: Waiting for upload completion...");
+      console.log("[Blob Upload] Step 2: Indexing via TwelveLabs...");
 
-      let uploadComplete = false;
-      let attempts = 0;
-      const maxAttempts = 60; // 5 minutes
-
-      while (!uploadComplete && attempts < maxAttempts) {
-        const statusResponse = await fetch("/api/upload/multipart/check-status", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            uploadId: uploadId,
-          }),
-        });
-
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          if (statusData.status === 'completed') {
-            uploadComplete = true;
-            console.log("[Multipart Upload] Upload completed!");
-          } else {
-            console.log(`[Multipart Upload] Status: ${statusData.status}, waiting...`);
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-          }
-        }
-
-        attempts++;
-      }
-
-      if (!uploadComplete) {
-        throw new Error("Upload timeout - asset processing took too long");
-      }
-
-      // Step 5: Index the asset
-      console.log("[Multipart Upload] Step 5: Indexing asset in TwelveLabs...");
-
-      const indexResponse = await fetch("/api/upload/multipart/index-asset", {
+      const indexResponse = await fetch("/api/upload/from-blob", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          assetId: assetId,
+          blobUrl: blob.url,
           filename: file.name,
         }),
       });
@@ -178,7 +68,7 @@ export default function UploadVideo() {
 
       const indexData = await indexResponse.json();
       const videoId = indexData.videoId;
-      console.log("[Multipart Upload] Video indexed successfully:", indexData);
+      console.log("[Blob Upload] Video indexed successfully:", indexData);
 
       // Show success modal
       setTimeout(() => {
