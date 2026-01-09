@@ -89,7 +89,6 @@ export default function UploadVideo() {
       const blob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/upload/blob-token',
-        addRandomSuffix: true, // Allow uploading same filename multiple times
         onUploadProgress: (progress) => {
           const percent = Math.round((progress.loaded / progress.total) * 100);
           setUploadProgress(percent);

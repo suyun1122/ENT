@@ -13,6 +13,7 @@ export async function POST(request) {
                 return {
                     allowedContentTypes: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'],
                     maximumSizeInBytes: 4 * 1024 * 1024 * 1024, // 4GB max
+                    addRandomSuffix: true, // Allow same filename to be uploaded multiple times
                     tokenPayload: JSON.stringify({
                         uploadedAt: new Date().toISOString(),
                     }),
