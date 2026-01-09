@@ -391,23 +391,10 @@ async function processSurgicalAnalysis(videoId) {
 
         processingStatus.set(videoId, { progress: 80, stage: 'saving_results' });
 
-        // Save to local filesystem first
-        const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-
-        // Ensure directory exists
-        const dir = path.dirname(localOutputPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        fs.writeFileSync(localOutputPath, JSON.stringify(parsedData, null, 2));
-        console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
-
-        // Save to Vercel Blob if token is available
+        // Save to Vercel Blob FIRST (works in production)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                const fileContent = fs.readFileSync(localOutputPath);
-                const blob = await put(`analysis/${videoId}.json`, fileContent, {
+                const blob = await put(`analysis/${videoId}.json`, JSON.stringify(parsedData, null, 2), {
                     access: 'public',
                     contentType: 'application/json'
                 });
@@ -415,6 +402,20 @@ async function processSurgicalAnalysis(videoId) {
             } catch (blobError) {
                 console.error(`[Surgical Analysis] Failed to upload to Vercel Blob:`, blobError);
             }
+        }
+
+        // Also save to local filesystem (for development, may fail in production - that's ok)
+        try {
+            const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+            const dir = path.dirname(localOutputPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(localOutputPath, JSON.stringify(parsedData, null, 2));
+            console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
+        } catch (fsError) {
+            // Expected to fail on Vercel (read-only filesystem) - that's OK, we have Blob
+            console.log(`[Surgical Analysis] Local file save skipped (read-only filesystem)`);
         }
 
         processingStatus.set(videoId, { progress: 100, stage: 'completed' });

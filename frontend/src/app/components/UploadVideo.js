@@ -33,13 +33,15 @@ export default function UploadVideo() {
           pollCount++;
           console.log(`[Indexing Status] Polling ${pollCount}/${MAX_POLLS}...`);
 
-          const response = await fetch(`/api/upload/status/${taskId}`);
+          // Pass blobUrl as query param so server can trigger tool detection early
+          const encodedBlobUrl = encodeURIComponent(blobUrl);
+          const response = await fetch(`/api/upload/status/${taskId}?blobUrl=${encodedBlobUrl}`);
           const data = await response.json();
 
-          console.log(`[Indexing Status] Status: ${data.status}`);
+          console.log(`[Indexing Status] Status: ${data.status}, videoId: ${data.videoId || 'pending'}`);
 
           if (data.status === 'ready') {
-            // Indexing complete - cleanup blob
+            // Indexing complete - cleanup blob (tool detection should have already started)
             console.log('[Indexing Status] Video ready! Cleaning up blob...');
             try {
               await fetch(`/api/upload/status/${taskId}`, {

@@ -11,9 +11,14 @@ function getTwelveLabsClient() {
     return twelvelabs_client;
 }
 
+// Track which tasks have had tool detection triggered
+const toolDetectionTriggered = new Set();
+
 export async function GET(request, { params }) {
     try {
         const { taskId } = await params;
+        const { searchParams } = new URL(request.url);
+        const blobUrl = searchParams.get('blobUrl');
 
         if (!taskId) {
             return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
@@ -24,19 +29,40 @@ export async function GET(request, { params }) {
         // Get task status from TwelveLabs
         const task = await getTwelveLabsClient().tasks.retrieve(taskId);
 
-        console.log('[Upload Status] Task status:', task.status);
+        console.log('[Upload Status] Task status:', task.status, 'videoId:', task.videoId);
+
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+        // If videoId is available and we have blobUrl, trigger tool detection early
+        if (task.videoId && blobUrl && !toolDetectionTriggered.has(taskId)) {
+            toolDetectionTriggered.add(taskId);
+            console.log('[Upload Status] Triggering early tool detection for videoId:', task.videoId);
+
+            fetch(`${baseUrl}/api/detect-tools/${task.videoId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blobUrl }),
+            })
+                .then(res => {
+                    if (res.ok) console.log('[Upload Status] Tool detection started');
+                    else console.warn('[Upload Status] Tool detection failed to start:', res.status);
+                })
+                .catch(err => console.warn('[Upload Status] Tool detection error:', err));
+        }
 
         if (task.status === 'ready') {
             console.log('[Upload Status] Video ready, Video ID:', task.videoId);
 
             // Trigger post-processing (surgical analysis)
-            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
             fetch(`${baseUrl}/api/analysis/${task.videoId}`, { method: 'POST' })
                 .then(res => {
                     if (res.ok) console.log('[Upload Status] Surgical analysis started');
                     else console.warn('[Upload Status] Surgical analysis failed to start');
                 })
                 .catch(err => console.warn('[Upload Status] Surgical analysis error:', err));
+
+            // Clean up tracking
+            toolDetectionTriggered.delete(taskId);
 
             return NextResponse.json({
                 status: 'ready',
@@ -45,6 +71,7 @@ export async function GET(request, { params }) {
             });
         } else if (task.status === 'failed') {
             console.log('[Upload Status] Task failed');
+            toolDetectionTriggered.delete(taskId);
             return NextResponse.json({
                 status: 'failed',
                 message: 'Video indexing failed',
@@ -53,6 +80,7 @@ export async function GET(request, { params }) {
             // Still processing (pending, validating, indexing, etc.)
             return NextResponse.json({
                 status: task.status,
+                videoId: task.videoId || null, // Return videoId if available
                 estimatedTime: task.estimatedTime || 0,
                 message: 'Video is being indexed',
             });
