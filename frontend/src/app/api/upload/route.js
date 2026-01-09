@@ -1,5 +1,6 @@
 import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
+import { put } from '@vercel/blob';
 
 const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
 
@@ -13,6 +14,14 @@ export async function POST(request) {
         }
 
         console.log('[Upload] Starting video upload:', file.name);
+
+        // Save video to Vercel Blob for later tool detection
+        console.log('[Upload] Saving video to Vercel Blob for tool detection...');
+        const videoBlob = await put(`temp-videos/${Date.now()}-${file.name}`, file, {
+            access: 'public',
+            token: process.env.BLOB_READ_WRITE_TOKEN,
+        });
+        console.log('[Upload] Video saved to Blob:', videoBlob.url);
 
         // Use the primary index (supports both Marengo and Pegasus engines)
         const indexId = process.env.NEXT_PUBLIC_TWELVELABS_MARENGO_INDEX_ID;
@@ -36,10 +45,12 @@ export async function POST(request) {
         console.log('[Upload] Waiting for indexing to complete...');
         const completedTask = await twelvelabs_client.tasks.waitForDone(task.id, {
             callback: (task) => {
-                console.log(`[Upload] Status: ${task.status}, Estimated time: ${task.estimatedTime || 0}s`);
+                console.log(`[Upload] Indexing progress - Status: ${task.status}, Estimated time remaining: ${task.estimatedTime || 0}s`);
             },
             sleepInterval: 5000, // Check every 5 seconds
         });
+
+        console.log('[Upload] Indexing finished with status:', completedTask.status);
 
         if (completedTask.status !== 'ready') {
             console.error('[Upload] Video indexing failed, status:', completedTask.status);
@@ -58,7 +69,11 @@ export async function POST(request) {
 
         // Start both processes in parallel
         const [detectionResult, analysisResult] = await Promise.allSettled([
-            fetch(`${baseUrl}/api/detect-tools/${completedTask.videoId}`, { method: 'POST' })
+            fetch(`${baseUrl}/api/detect-tools/${completedTask.videoId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blobUrl: videoBlob.url })
+            })
                 .then(res => {
                     if (res.ok) {
                         console.log('[Upload] Tool detection started successfully');

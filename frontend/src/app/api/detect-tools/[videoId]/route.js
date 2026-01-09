@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { TwelveLabs } from 'twelvelabs-js';
-import { put, head } from '@vercel/blob';
+import { put, head, del } from '@vercel/blob';
 
 const twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
 
@@ -86,13 +86,22 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
     /*
     Start tool detection processing for a specific video
-    Downloads video from TwelveLabs, runs YOLO inference, and saves results
+    Downloads video from Vercel Blob, runs YOLO inference, and saves results
     */
 
     const { videoId } = await params;
 
     if (!videoId) {
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+
+    // Parse request body to get blobUrl
+    let blobUrl = null;
+    try {
+        const body = await request.json();
+        blobUrl = body.blobUrl;
+    } catch (e) {
+        // No body or invalid JSON - blobUrl remains null
     }
 
     // Check if already processing
@@ -108,8 +117,8 @@ export async function POST(request, { params }) {
     // Check if results already exist in Vercel Blob (newly generated)
     // Note: Frontend checks static files first, so this only checks Blob
     try {
-        const blobUrl = `detections/${videoId}.json`;
-        const blobHead = await head(blobUrl, {
+        const detectionBlobUrl = `detections/${videoId}.json`;
+        const blobHead = await head(detectionBlobUrl, {
             token: process.env.BLOB_READ_WRITE_TOKEN
         });
 
@@ -136,6 +145,14 @@ export async function POST(request, { params }) {
         });
     }
 
+    // Require blobUrl for new detections
+    if (!blobUrl) {
+        return NextResponse.json({
+            error: 'blobUrl is required to start detection',
+            videoId: videoId
+        }, { status: 400 });
+    }
+
     // Initialize processing status
     processingStatus.set(videoId, {
         progress: 0,
@@ -143,7 +160,7 @@ export async function POST(request, { params }) {
     });
 
     // Start processing in background (don't await)
-    processVideoDetection(videoId).catch(error => {
+    processVideoDetection(videoId, blobUrl).catch(error => {
         console.error(`Error processing video ${videoId}:`, error);
         processingStatus.set(videoId, {
             progress: 0,
@@ -159,38 +176,34 @@ export async function POST(request, { params }) {
     });
 }
 
-async function processVideoDetection(videoId) {
+async function processVideoDetection(videoId, videoBlobUrl) {
+    let tempVideoPath = null;
+
     try {
         // Update status
-        processingStatus.set(videoId, { progress: 10, stage: 'fetching_video' });
+        processingStatus.set(videoId, { progress: 10, stage: 'downloading_video' });
 
-        // For now, use local video files from runs directory instead of downloading
-        // This is more reliable than downloading HLS streams
-        const runsDir = path.join(process.cwd(), '..', 'runs');
+        console.log(`[Detection] Downloading video from Blob: ${videoBlobUrl}`);
 
-        // Try to find the video file by matching filename
-        // The videoId from TwelveLabs is often the filename
-        const possiblePaths = [
-            path.join(runsDir, `${videoId}`),
-            path.join(runsDir, `${videoId}.mp4`),
-            path.join(runsDir, 'Gallbladder removal surgery.mp4'),
-        ];
-
-        let tempVideoPath = null;
-        for (const testPath of possiblePaths) {
-            if (fs.existsSync(testPath)) {
-                tempVideoPath = testPath;
-                console.log(`[Detection] Found local video: ${tempVideoPath}`);
-                break;
-            }
+        // Download video from Vercel Blob
+        const response = await fetch(videoBlobUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download video from Blob: ${response.status}`);
         }
 
-        if (!tempVideoPath) {
-            throw new Error(`Video file not found locally. Tried paths: ${possiblePaths.join(', ')}`);
+        const videoBuffer = Buffer.from(await response.arrayBuffer());
+
+        // Save to temp file for ffmpeg/inference
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
         }
 
-        // Update status
-        processingStatus.set(videoId, { progress: 20, stage: 'video_located' });
+        tempVideoPath = path.join(tempDir, `${videoId}.mp4`);
+        fs.writeFileSync(tempVideoPath, videoBuffer);
+
+        console.log(`[Detection] Video saved to temp: ${tempVideoPath}`);
+        processingStatus.set(videoId, { progress: 30, stage: 'video_downloaded' });
 
         // Update status
         processingStatus.set(videoId, { progress: 40, stage: 'running_detection' });
@@ -228,7 +241,25 @@ async function processVideoDetection(videoId) {
             }
         }
 
-        // Note: We don't clean up the video file since we're using local files from runs/
+        // Clean up temp video file
+        if (tempVideoPath && fs.existsSync(tempVideoPath)) {
+            try {
+                fs.unlinkSync(tempVideoPath);
+                console.log(`[Detection] Cleaned up temp file: ${tempVideoPath}`);
+            } catch (cleanupError) {
+                console.warn('[Detection] Failed to clean up temp file:', cleanupError);
+            }
+        }
+
+        // Delete video from Vercel Blob (temp storage)
+        if (videoBlobUrl && process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                await del(videoBlobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN });
+                console.log(`[Detection] Deleted temp video from Blob: ${videoBlobUrl}`);
+            } catch (deleteError) {
+                console.warn('[Detection] Failed to delete temp video from Blob:', deleteError);
+            }
+        }
 
         // Mark as completed
         processingStatus.set(videoId, { progress: 100, stage: 'completed' });
@@ -238,10 +269,18 @@ async function processVideoDetection(videoId) {
             processingStatus.delete(videoId);
         }, 60000);
 
-        console.log(`Tool detection completed for video ${videoId}`);
+        console.log(`[Detection] Tool detection completed for video ${videoId}`);
 
     } catch (error) {
-        console.error(`Error processing video ${videoId}:`, error);
+        console.error(`[Detection] Error processing video ${videoId}:`, error);
+
+        // Clean up temp file on error
+        if (tempVideoPath && fs.existsSync(tempVideoPath)) {
+            try {
+                fs.unlinkSync(tempVideoPath);
+            } catch (e) { /* ignore */ }
+        }
+
         processingStatus.set(videoId, {
             progress: 0,
             stage: 'error',
