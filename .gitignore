@@ -22,6 +22,8 @@ __pycache__*
 # Large files - videos and model weights
 *.mp4
 *.pt
+# But allow backend model for Railway deployment
+!backend/best.pt
 /runs/
 /cv_model/training_scripts/surgical_tool_training_runs/
 /cv_model/training_scripts/*.pt

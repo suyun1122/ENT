@@ -1,21 +1,10 @@
 import { NextResponse } from 'next/server';
-import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { TwelveLabs } from 'twelvelabs-js';
-import { put, head, del } from '@vercel/blob';
+import { head } from '@vercel/blob';
 
-// Lazy initialization to avoid build-time errors
-let twelvelabs_client = null;
-function getTwelveLabsClient() {
-    if (!twelvelabs_client) {
-        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
-    }
-    return twelvelabs_client;
-}
-
-// Store for tracking processing status
-const processingStatus = new Map();
+// Railway backend URL for tool detection
+const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
 
 export async function GET(request, { params }) {
     /*
@@ -93,7 +82,7 @@ export async function GET(request, { params }) {
 export async function POST(request, { params }) {
     /*
     Start tool detection processing for a specific video
-    Downloads video from Vercel Blob, runs YOLO inference, and saves results
+    Calls Railway backend to process video with YOLO
     */
 
     const { videoId } = await params;
@@ -111,18 +100,7 @@ export async function POST(request, { params }) {
         // No body or invalid JSON - blobUrl remains null
     }
 
-    // Check if already processing
-    if (processingStatus.has(videoId)) {
-        return NextResponse.json({
-            status: 'processing',
-            videoId: videoId,
-            message: 'Detection already in progress',
-            ...processingStatus.get(videoId)
-        });
-    }
-
-    // Check if results already exist in Vercel Blob (newly generated)
-    // Note: Frontend checks static files first, so this only checks Blob
+    // Check if results already exist in Vercel Blob
     try {
         const detectionBlobUrl = `detections/${videoId}.json`;
         const blobHead = await head(detectionBlobUrl, {
@@ -160,192 +138,57 @@ export async function POST(request, { params }) {
         }, { status: 400 });
     }
 
-    // Initialize processing status
-    processingStatus.set(videoId, {
-        progress: 0,
-        stage: 'initializing'
-    });
+    // Check if Railway backend is configured
+    if (!TOOL_DETECTION_BACKEND_URL) {
+        console.warn('[Detection] TOOL_DETECTION_BACKEND_URL not configured');
+        return NextResponse.json({
+            status: 'unavailable',
+            videoId: videoId,
+            message: 'Tool detection backend not configured'
+        }, { status: 503 });
+    }
 
-    // Start processing in background (don't await)
-    processVideoDetection(videoId, blobUrl).catch(error => {
-        console.error(`Error processing video ${videoId}:`, error);
-        processingStatus.set(videoId, {
-            progress: 0,
-            stage: 'error',
-            error: error.message
-        });
-    });
-
-    return NextResponse.json({
-        status: 'started',
-        videoId: videoId,
-        message: 'Tool detection processing started. Use GET to check status.'
-    });
-}
-
-async function processVideoDetection(videoId, videoBlobUrl) {
-    let tempVideoPath = null;
-
+    // Call Railway backend to start detection
     try {
-        // Update status
-        processingStatus.set(videoId, { progress: 10, stage: 'downloading_video' });
+        console.log(`[Detection] Calling Railway backend for video: ${videoId}`);
 
-        console.log(`[Detection] Downloading video from Blob: ${videoBlobUrl}`);
-
-        // Download video from Vercel Blob
-        const response = await fetch(videoBlobUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to download video from Blob: ${response.status}`);
-        }
-
-        const videoBuffer = Buffer.from(await response.arrayBuffer());
-
-        // Save to temp file for ffmpeg/inference
-        const tempDir = path.join(process.cwd(), 'temp');
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
-
-        tempVideoPath = path.join(tempDir, `${videoId}.mp4`);
-        fs.writeFileSync(tempVideoPath, videoBuffer);
-
-        console.log(`[Detection] Video saved to temp: ${tempVideoPath}`);
-        processingStatus.set(videoId, { progress: 30, stage: 'video_downloaded' });
-
-        // Update status
-        processingStatus.set(videoId, { progress: 40, stage: 'running_detection' });
-
-        // Run Python inference script
-        const modelPath = path.join(process.cwd(), 'models', 'surgical_tools.pt');
-        const outputPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
-        const scriptPath = path.join(process.cwd(), 'src', 'app', 'api', 'detect-tools', 'inference.py');
-
-        // Use Python from cv_model venv
-        const pythonPath = path.join(process.cwd(), '..', 'cv_model', 'venv', 'bin', 'python');
-
-        await runInference(pythonPath, scriptPath, tempVideoPath, modelPath, outputPath, (progress) => {
-            processingStatus.set(videoId, {
-                progress: 40 + (progress * 0.5), // 40-90%
-                stage: 'running_detection'
-            });
+        const response = await fetch(`${TOOL_DETECTION_BACKEND_URL}/detect`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                video_id: videoId,
+                blob_url: blobUrl,
+            }),
         });
 
-        // Update status
-        processingStatus.set(videoId, { progress: 95, stage: 'finalizing' });
-
-        // Upload results to Vercel Blob (production)
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                const detectionData = JSON.parse(fs.readFileSync(outputPath, 'utf-8'));
-                const blob = await put(`detections/${videoId}.json`, JSON.stringify(detectionData), {
-                    access: 'public',
-                    token: process.env.BLOB_READ_WRITE_TOKEN,
-                });
-                console.log(`[Detection] Uploaded to Vercel Blob: ${blob.url}`);
-            } catch (uploadError) {
-                console.error('[Detection] Failed to upload to Vercel Blob:', uploadError);
-                // Continue anyway - local file exists
-            }
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[Detection] Railway backend error: ${errorText}`);
+            return NextResponse.json({
+                status: 'error',
+                videoId: videoId,
+                message: `Backend error: ${response.status}`
+            }, { status: response.status });
         }
 
-        // Clean up temp video file
-        if (tempVideoPath && fs.existsSync(tempVideoPath)) {
-            try {
-                fs.unlinkSync(tempVideoPath);
-                console.log(`[Detection] Cleaned up temp file: ${tempVideoPath}`);
-            } catch (cleanupError) {
-                console.warn('[Detection] Failed to clean up temp file:', cleanupError);
-            }
-        }
+        const result = await response.json();
+        console.log(`[Detection] Railway backend response:`, result);
 
-        // Delete video from Vercel Blob (temp storage)
-        if (videoBlobUrl && process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                await del(videoBlobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN });
-                console.log(`[Detection] Deleted temp video from Blob: ${videoBlobUrl}`);
-            } catch (deleteError) {
-                console.warn('[Detection] Failed to delete temp video from Blob:', deleteError);
-            }
-        }
-
-        // Mark as completed
-        processingStatus.set(videoId, { progress: 100, stage: 'completed' });
-
-        // Remove from processing map after 60 seconds
-        setTimeout(() => {
-            processingStatus.delete(videoId);
-        }, 60000);
-
-        console.log(`[Detection] Tool detection completed for video ${videoId}`);
+        return NextResponse.json({
+            status: result.status,
+            videoId: videoId,
+            message: result.message || 'Tool detection started'
+        });
 
     } catch (error) {
-        console.error(`[Detection] Error processing video ${videoId}:`, error);
-
-        // Clean up temp file on error
-        if (tempVideoPath && fs.existsSync(tempVideoPath)) {
-            try {
-                fs.unlinkSync(tempVideoPath);
-            } catch (e) { /* ignore */ }
-        }
-
-        processingStatus.set(videoId, {
-            progress: 0,
-            stage: 'error',
-            error: error.message
-        });
-        throw error;
+        console.error(`[Detection] Error calling Railway backend:`, error);
+        return NextResponse.json({
+            status: 'error',
+            videoId: videoId,
+            message: `Failed to start detection: ${error.message}`
+        }, { status: 500 });
     }
-}
-
-function runInference(pythonPath, scriptPath, videoPath, modelPath, outputPath, onProgress) {
-    return new Promise((resolve, reject) => {
-        const args = [scriptPath, videoPath, modelPath, outputPath, '5']; // frame_skip=5
-
-        const process = spawn(pythonPath, args, {
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        process.stdout.on('data', (data) => {
-            stdout += data.toString();
-        });
-
-        process.stderr.on('data', (data) => {
-            const text = data.toString();
-            stderr += text;
-
-            // Parse progress from stderr
-            const progressMatch = text.match(/\[PROGRESS\]\s+([\d.]+)%/);
-            if (progressMatch && onProgress) {
-                const progress = parseFloat(progressMatch[1]);
-                onProgress(progress);
-            }
-
-            console.log('[INFERENCE]', text.trim());
-        });
-
-        process.on('close', (code) => {
-            if (code === 0) {
-                try {
-                    const result = JSON.parse(stdout.trim());
-                    if (result.success) {
-                        resolve(result);
-                    } else {
-                        reject(new Error(result.error || 'Inference failed'));
-                    }
-                } catch (error) {
-                    reject(new Error(`Failed to parse inference output: ${error.message}`));
-                }
-            } else {
-                reject(new Error(`Inference process exited with code ${code}: ${stderr}`));
-            }
-        });
-
-        process.on('error', (error) => {
-            reject(new Error(`Failed to start inference process: ${error.message}`));
-        });
-    });
 }
 
