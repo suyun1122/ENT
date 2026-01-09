@@ -17,51 +17,177 @@ export default function UploadVideo() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadedVideoId, setUploadedVideoId] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState(''); // 'generating', 'uploading', 'indexing'
 
   const uploadVideo = async (file) => {
-    console.log("Starting video upload...");
+    console.log("Starting multipart video upload...");
     setIsUploading(true);
     setUploadError(null);
     setShowSuccessModal(false);
-
-    const formData = new FormData();
-    formData.append("file", file);
+    setUploadProgress(0);
 
     try {
-      console.log("Uploading to TwelveLabs via /api/upload...");
+      // Step 1: Create upload session
+      setUploadStage('generating');
+      console.log("[Multipart Upload] Step 1: Creating upload session...");
 
-      const response = await fetch("/api/upload", {
+      const sessionResponse = await fetch("/api/upload/multipart/create-session", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          fileSize: file.size,
+        }),
       });
 
-      console.log("Upload response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Failed to upload video:", response.status, errorData);
-        setUploadError(
-          `Upload failed: ${errorData.error || response.statusText}`
-        );
-        setIsUploading(false);
-        return {
-          success: false,
-          message: "Failed to upload video",
-        };
+      if (!sessionResponse.ok) {
+        const errorData = await sessionResponse.json();
+        throw new Error(errorData.error || "Failed to create upload session");
       }
 
-      const data = await response.json();
-      const videoId = data.videoId;
+      const { uploadId, assetId, uploadUrls, chunkSize } = await sessionResponse.json();
+      console.log("[Multipart Upload] Session created");
+      console.log("[Multipart Upload] Upload ID:", uploadId);
+      console.log("[Multipart Upload] Asset ID:", assetId);
+      console.log("[Multipart Upload] Chunk size:", chunkSize);
+      console.log("[Multipart Upload] Upload URLs:", uploadUrls.length);
 
-      console.log("Video uploaded and indexed successfully:", data);
+      // Step 2: Split file into chunks and upload
+      setUploadStage('uploading');
+      console.log("[Multipart Upload] Step 2: Uploading chunks...");
 
-      // Tool detection is already triggered by the upload API
-      // Show success modal after a brief delay to ensure state is updated
+      const totalChunks = Math.ceil(file.size / chunkSize);
+      const uploadedChunks = [];
+      let uploadedBytes = 0;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+        const uploadUrl = uploadUrls[i];
+
+        console.log(`[Multipart Upload] Uploading chunk ${i + 1}/${totalChunks}`);
+
+        // Upload chunk to presigned URL
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          body: chunk,
+          headers: {
+            'Content-Type': 'application/octet-stream',
+          },
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload chunk ${i + 1}`);
+        }
+
+        // Get ETag from response
+        const etag = uploadResponse.headers.get('ETag');
+        uploadedChunks.push({
+          chunk_number: i + 1,
+          etag: etag,
+        });
+
+        // Update progress
+        uploadedBytes += chunk.size;
+        const progress = Math.round((uploadedBytes / file.size) * 100);
+        setUploadProgress(progress);
+        console.log(`[Multipart Upload] Progress: ${progress}%`);
+      }
+
+      // Step 3: Report completed chunks
+      console.log("[Multipart Upload] Step 3: Reporting uploaded chunks...");
+
+      const reportResponse = await fetch("/api/upload/multipart/report-chunks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uploadId: uploadId,
+          chunks: uploadedChunks,
+        }),
+      });
+
+      if (!reportResponse.ok) {
+        const errorData = await reportResponse.json();
+        throw new Error(errorData.error || "Failed to report chunks");
+      }
+
+      console.log("[Multipart Upload] Chunks reported successfully");
+
+      // Step 4: Poll status until completed
+      setUploadStage('indexing');
+      setUploadProgress(100);
+      console.log("[Multipart Upload] Step 4: Waiting for upload completion...");
+
+      let uploadComplete = false;
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes
+
+      while (!uploadComplete && attempts < maxAttempts) {
+        const statusResponse = await fetch("/api/upload/multipart/check-status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadId: uploadId,
+          }),
+        });
+
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          if (statusData.status === 'completed') {
+            uploadComplete = true;
+            console.log("[Multipart Upload] Upload completed!");
+          } else {
+            console.log(`[Multipart Upload] Status: ${statusData.status}, waiting...`);
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          }
+        }
+
+        attempts++;
+      }
+
+      if (!uploadComplete) {
+        throw new Error("Upload timeout - asset processing took too long");
+      }
+
+      // Step 5: Index the asset
+      console.log("[Multipart Upload] Step 5: Indexing asset in TwelveLabs...");
+
+      const indexResponse = await fetch("/api/upload/multipart/index-asset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          assetId: assetId,
+          filename: file.name,
+        }),
+      });
+
+      if (!indexResponse.ok) {
+        const errorData = await indexResponse.json();
+        throw new Error(errorData.error || "Failed to index video");
+      }
+
+      const indexData = await indexResponse.json();
+      const videoId = indexData.videoId;
+      console.log("[Multipart Upload] Video indexed successfully:", indexData);
+
+      // Show success modal
       setTimeout(() => {
         console.log("Showing success modal...");
         setUploadedVideoId(videoId);
         setShowSuccessModal(true);
         setIsUploading(false);
+        setUploadProgress(0);
+        setUploadStage('');
       }, 100);
 
       return {
@@ -73,6 +199,8 @@ export default function UploadVideo() {
       console.error("Error uploading video", error);
       setUploadError(`Upload error: ${error.message}`);
       setIsUploading(false);
+      setUploadProgress(0);
+      setUploadStage('');
       return {
         success: false,
         message: "Error uploading video",
@@ -208,12 +336,32 @@ export default function UploadVideo() {
                   <CloudArrowUpIcon className="h-8 w-8" />
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3 w-full max-w-md">
                 <h3 className="text-lg font-semibold font-inter text-blue-800">
-                  Uploading Video...
+                  {uploadStage === 'generating' && 'Preparing Upload...'}
+                  {uploadStage === 'uploading' && 'Uploading Video...'}
+                  {uploadStage === 'indexing' && 'Processing Video...'}
+                  {!uploadStage && 'Uploading Video...'}
                 </h3>
+                {uploadStage === 'uploading' && uploadProgress > 0 && (
+                  <div className="w-full">
+                    <div className="flex justify-between text-xs text-blue-600 mb-1">
+                      <span>Progress</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
                 <p className="text-sm font-inter text-blue-600">
-                  Please wait while your video is being processed
+                  {uploadStage === 'generating' && 'Creating upload session...'}
+                  {uploadStage === 'uploading' && 'Uploading chunks directly to TwelveLabs...'}
+                  {uploadStage === 'indexing' && 'Processing and indexing video...'}
+                  {!uploadStage && 'Please wait while your video is being processed'}
                 </p>
               </div>
             </>

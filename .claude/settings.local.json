@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(done)"
+      "Bash(done)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.twelvelabs.io)"
     ]
   }
 }
