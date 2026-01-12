@@ -25,6 +25,95 @@ export default function UploadVideo() {
     clearError,
   } = useUpload();
 
+  // Poll for tool detection completion, then cleanup blob
+  const waitForDetectionAndCleanup = async (videoId, blobUrl, taskId) => {
+    const POLL_INTERVAL = 10000; // 10 seconds
+    const MAX_POLLS = 60; // 10 minutes max (60 * 10s)
+    let pollCount = 0;
+
+    const checkDetection = async () => {
+      try {
+        pollCount++;
+        console.log(`[Detection Cleanup] Checking detection status ${pollCount}/${MAX_POLLS}...`);
+
+        const response = await fetch(`/api/detect-tools/${videoId}`);
+        const data = await response.json();
+
+        console.log(`[Detection Cleanup] Status: ${data.status}`);
+
+        if (data.status === 'completed') {
+          // Verify detection data is not empty
+          const hasValidData = data.data &&
+            (data.data.frames?.length > 0 ||
+             data.data.detections?.length > 0 ||
+             Object.keys(data.data.classes || {}).length > 0);
+
+          if (!hasValidData) {
+            console.warn('[Detection Cleanup] Detection completed but data is empty, continuing to poll...');
+            if (pollCount < MAX_POLLS) {
+              setTimeout(checkDetection, POLL_INTERVAL);
+              return;
+            }
+          }
+
+          // Detection complete with valid data! Now safe to cleanup blob
+          console.log('[Detection Cleanup] Detection complete with valid data, cleaning up blob...');
+          console.log('[Detection Cleanup] Data summary:', {
+            frames: data.data?.frames?.length || 0,
+            classes: Object.keys(data.data?.classes || {}).length || 0
+          });
+
+          try {
+            await fetch(`/api/upload/status/${taskId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ blobUrl }),
+            });
+            console.log('[Detection Cleanup] Blob cleanup complete');
+          } catch (cleanupError) {
+            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
+          }
+          return;
+        } else if (data.status === 'error' || pollCount >= MAX_POLLS) {
+          // Error or timeout - cleanup anyway to avoid orphaned blobs
+          console.log('[Detection Cleanup] Detection failed or timeout, cleaning up blob anyway...');
+          try {
+            await fetch(`/api/upload/status/${taskId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ blobUrl }),
+            });
+          } catch (cleanupError) {
+            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
+          }
+          return;
+        } else {
+          // Still processing - continue polling
+          setTimeout(checkDetection, POLL_INTERVAL);
+        }
+      } catch (error) {
+        console.error('[Detection Cleanup] Poll error:', error);
+        if (pollCount >= MAX_POLLS) {
+          // Timeout - cleanup anyway
+          try {
+            await fetch(`/api/upload/status/${taskId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ blobUrl }),
+            });
+          } catch (cleanupError) {
+            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
+          }
+        } else {
+          setTimeout(checkDetection, POLL_INTERVAL);
+        }
+      }
+    };
+
+    // Start polling for detection completion
+    checkDetection();
+  };
+
   // Poll for indexing status
   const pollIndexingStatus = async (taskId, blobUrl) => {
     const POLL_INTERVAL = 5000; // 5 seconds
@@ -37,7 +126,7 @@ export default function UploadVideo() {
           pollCount++;
           console.log(`[Indexing Status] Polling ${pollCount}/${MAX_POLLS}...`);
 
-          // Pass blobUrl as query param so server can trigger tool detection early
+          // Pass blobUrl so server can trigger tool detection when ready
           const encodedBlobUrl = encodeURIComponent(blobUrl);
           const response = await fetch(`/api/upload/status/${taskId}?blobUrl=${encodedBlobUrl}`);
           const data = await response.json();
@@ -50,17 +139,26 @@ export default function UploadVideo() {
           }
 
           if (data.status === 'ready') {
-            // Indexing complete - cleanup blob (tool detection should have already started)
-            console.log('[Indexing Status] Video ready! Cleaning up blob...');
-            try {
-              await fetch(`/api/upload/status/${taskId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ blobUrl }),
-              });
-            } catch (cleanupError) {
-              console.warn('[Indexing Status] Blob cleanup failed:', cleanupError);
+            // Indexing complete - tool detection was triggered by the server
+            console.log('[Indexing Status] Video ready! Tool detection triggered:', data.toolDetectionTriggered);
+
+            // Start background polling for detection completion, then cleanup
+            if (data.toolDetectionTriggered) {
+              console.log('[Indexing Status] Starting background detection monitoring...');
+              waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
+            } else {
+              // No tool detection triggered, cleanup immediately
+              try {
+                await fetch(`/api/upload/status/${taskId}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ blobUrl }),
+                });
+              } catch (cleanupError) {
+                console.warn('[Indexing Status] Blob cleanup failed:', cleanupError);
+              }
             }
+
             resolve(data.videoId);
           } else if (data.status === 'failed') {
             reject(new Error('Video indexing failed'));
@@ -384,7 +482,7 @@ export default function UploadVideo() {
                 Video Indexing
               </div>
               <div className="text-[11px] text-gray-500 leading-tight">
-                Twelve Labs AI indexes your video
+                AI analyzes your video content
               </div>
             </div>
           </div>

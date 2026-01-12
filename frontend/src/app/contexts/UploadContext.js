@@ -54,14 +54,14 @@ export function UploadProvider({ children }) {
       }
     });
 
-    // Clear completed state after 3 seconds
+    // Clear completed state after 5 seconds
     setTimeout(() => {
       setUploadState(prev => ({
         ...prev,
         completedVideoId: null,
         fileName: '',
       }));
-    }, 3000);
+    }, 5000);
   }, []);
 
   // Subscribe to upload completion events
@@ -89,6 +89,14 @@ export function UploadProvider({ children }) {
     }));
   }, []);
 
+  const dismissComplete = useCallback(() => {
+    setUploadState(prev => ({
+      ...prev,
+      completedVideoId: null,
+      fileName: '',
+    }));
+  }, []);
+
   return (
     <UploadContext.Provider value={{
       ...uploadState,
@@ -98,6 +106,7 @@ export function UploadProvider({ children }) {
       completeUpload,
       failUpload,
       clearError,
+      dismissComplete,
       onUploadComplete,
     }}>
       {children}

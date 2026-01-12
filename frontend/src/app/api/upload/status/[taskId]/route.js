@@ -11,9 +11,6 @@ function getTwelveLabsClient() {
     return twelvelabs_client;
 }
 
-// Track which tasks have had tool detection triggered
-const toolDetectionTriggered = new Set();
-
 export async function GET(request, { params }) {
     try {
         const { taskId } = await params;
@@ -24,34 +21,38 @@ export async function GET(request, { params }) {
             return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
         }
 
-        console.log('[Upload Status] Checking task:', taskId);
+        console.log('[Upload Status] Checking task:', taskId, 'blobUrl:', blobUrl ? 'provided' : 'none');
 
         // Get task status from TwelveLabs
-        const task = await getTwelveLabsClient().tasks.retrieve(taskId);
+        const client = getTwelveLabsClient();
+        const task = await client.tasks.retrieve(taskId);
 
         console.log('[Upload Status] Task status:', task.status, 'videoId:', task.videoId);
 
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-        // If videoId is available and we have blobUrl, trigger tool detection early
-        if (task.videoId && blobUrl && !toolDetectionTriggered.has(taskId)) {
-            toolDetectionTriggered.add(taskId);
-            console.log('[Upload Status] Triggering early tool detection for videoId:', task.videoId);
-
-            fetch(`${baseUrl}/api/detect-tools/${task.videoId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ blobUrl }),
-            })
-                .then(res => {
-                    if (res.ok) console.log('[Upload Status] Tool detection started');
-                    else console.warn('[Upload Status] Tool detection failed to start:', res.status);
-                })
-                .catch(err => console.warn('[Upload Status] Tool detection error:', err));
-        }
-
         if (task.status === 'ready') {
             console.log('[Upload Status] Video ready, Video ID:', task.videoId);
+
+            // Trigger tool detection with blob URL (direct video file, not HLS stream)
+            if (blobUrl) {
+                console.log('[Upload Status] Triggering tool detection with blob URL...');
+                console.log('[Upload Status] Blob URL:', blobUrl);
+
+                fetch(`${baseUrl}/api/detect-tools/${task.videoId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ blobUrl: blobUrl }),
+                })
+                    .then(async res => {
+                        const text = await res.text();
+                        console.log('[Upload Status] Tool detection response status:', res.status);
+                        console.log('[Upload Status] Tool detection response:', text);
+                    })
+                    .catch(err => console.error('[Upload Status] Tool detection fetch error:', err));
+            } else {
+                console.warn('[Upload Status] No blob URL provided, skipping tool detection');
+            }
 
             // Trigger post-processing (surgical analysis)
             fetch(`${baseUrl}/api/analysis/${task.videoId}`, { method: 'POST' })
@@ -61,17 +62,15 @@ export async function GET(request, { params }) {
                 })
                 .catch(err => console.warn('[Upload Status] Surgical analysis error:', err));
 
-            // Clean up tracking
-            toolDetectionTriggered.delete(taskId);
-
             return NextResponse.json({
                 status: 'ready',
                 videoId: task.videoId,
                 message: 'Video indexed successfully',
+                // Return flag indicating tool detection was triggered
+                toolDetectionTriggered: !!blobUrl,
             });
         } else if (task.status === 'failed') {
             console.log('[Upload Status] Task failed');
-            toolDetectionTriggered.delete(taskId);
             return NextResponse.json({
                 status: 'failed',
                 message: 'Video indexing failed',

@@ -22,7 +22,7 @@ const getStageInfo = (stage) => {
 };
 
 export default function UploadIndicator() {
-  const { isUploading, progress, stage, fileName, error, completedVideoId, clearError } = useUpload();
+  const { isUploading, progress, stage, fileName, error, completedVideoId, clearError, dismissComplete } = useUpload();
 
   // Don't render if nothing to show
   if (!isUploading && !completedVideoId && !error) {
@@ -93,6 +93,12 @@ export default function UploadIndicator() {
               <p className="text-sm font-medium text-gray-900">Upload complete!</p>
               <p className="text-xs text-gray-500">Video is now being processed</p>
             </div>
+            <button
+              onClick={dismissComplete}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <XCircleIcon className="w-5 h-5" />
+            </button>
           </div>
         </div>
       )}

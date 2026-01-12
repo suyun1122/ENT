@@ -12,62 +12,77 @@ export async function GET(request, { params }) {
     Returns JSON with bounding box data or processing status
     */
 
-    const { videoId } = await params;
-
-    if (!videoId) {
-        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
-    }
-
-    // Check Vercel Blob (production - newly generated detections)
-    // Note: Static files (pre-deployed) are checked by frontend first
     try {
-        const blobUrl = `detections/${videoId}.json`;
-        const blobHead = await head(blobUrl, {
-            token: process.env.BLOB_READ_WRITE_TOKEN
+        const { videoId } = await params;
+
+        if (!videoId) {
+            return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+        }
+
+        console.log(`[Detection GET] Checking for videoId: ${videoId}`);
+
+        // Check Vercel Blob (production - newly generated detections)
+        // Note: Static files (pre-deployed) are checked by frontend first
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const blobPath = `detections/${videoId}.json`;
+                console.log(`[Detection GET] Checking Blob: ${blobPath}`);
+                const blobHead = await head(blobPath, {
+                    token: process.env.BLOB_READ_WRITE_TOKEN
+                });
+
+                if (blobHead) {
+                    // Fetch the data from blob
+                    const response = await fetch(blobHead.url);
+                    const detectionData = await response.json();
+
+                    console.log(`[Detection GET] Loaded from Vercel Blob: ${videoId}`);
+                    return NextResponse.json({
+                        status: 'completed',
+                        videoId: videoId,
+                        data: detectionData
+                    });
+                }
+            } catch (blobError) {
+                // Blob not found - this is normal for new videos
+                console.log(`[Detection GET] Blob not found for ${videoId}: ${blobError.message}`);
+            }
+        }
+
+        // Fallback to local file system (development only)
+        // In production, static files are served directly by Vercel CDN
+        const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
+
+        if (fs.existsSync(detectionPath)) {
+            try {
+                const detectionData = JSON.parse(fs.readFileSync(detectionPath, 'utf-8'));
+                console.log(`[Detection GET] Loaded from local file system: ${videoId}`);
+                return NextResponse.json({
+                    status: 'completed',
+                    videoId: videoId,
+                    data: detectionData
+                });
+            } catch (error) {
+                console.error('[Detection GET] Error reading detection file:', error);
+                return NextResponse.json({ error: 'Failed to read detection data' }, { status: 500 });
+            }
+        }
+
+        // No results found
+        console.log(`[Detection GET] No results found for ${videoId}`);
+        return NextResponse.json({
+            status: 'not_found',
+            videoId: videoId,
+            message: 'Tool detection has not been run for this video. Use POST to start processing.'
         });
 
-        if (blobHead) {
-            // Fetch the data from blob
-            const response = await fetch(blobHead.url);
-            const detectionData = await response.json();
-
-            console.log(`[Detection] Loaded from Vercel Blob: ${videoId}`);
-            return NextResponse.json({
-                status: 'completed',
-                videoId: videoId,
-                data: detectionData
-            });
-        }
-    } catch (blobError) {
-        // Blob not found, will check local file system for development
-        console.log(`[Detection] Blob not found for ${videoId}, checking local...`);
+    } catch (error) {
+        console.error('[Detection GET] Unexpected error:', error);
+        return NextResponse.json({
+            error: 'Internal server error',
+            message: error.message
+        }, { status: 500 });
     }
-
-    // Fallback to local file system (development only)
-    // In production, static files are served directly by Vercel CDN
-    const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
-
-    if (fs.existsSync(detectionPath)) {
-        try {
-            const detectionData = JSON.parse(fs.readFileSync(detectionPath, 'utf-8'));
-            console.log(`[Detection] Loaded from local file system: ${videoId}`);
-            return NextResponse.json({
-                status: 'completed',
-                videoId: videoId,
-                data: detectionData
-            });
-        } catch (error) {
-            console.error('Error reading detection file:', error);
-            return NextResponse.json({ error: 'Failed to read detection data' }, { status: 500 });
-        }
-    }
-
-    // No results found
-    return NextResponse.json({
-        status: 'not_found',
-        videoId: videoId,
-        message: 'Tool detection has not been run for this video. Use POST to start processing.'
-    });
 }
 
 export async function POST(request, { params }) {
@@ -77,6 +92,7 @@ export async function POST(request, { params }) {
     */
 
     const { videoId } = await params;
+    console.log(`[Detection POST] Starting for videoId: ${videoId}`);
 
     if (!videoId) {
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
@@ -87,8 +103,9 @@ export async function POST(request, { params }) {
     try {
         const body = await request.json();
         blobUrl = body.blobUrl;
+        console.log(`[Detection POST] Received blobUrl: ${blobUrl}`);
     } catch (e) {
-        // No body or invalid JSON - blobUrl remains null
+        console.log(`[Detection POST] No body or invalid JSON: ${e.message}`);
     }
 
     // Check if results already exist in Vercel Blob
@@ -142,7 +159,12 @@ export async function POST(request, { params }) {
 
     // Call Railway backend to start detection
     try {
-        console.log(`[Detection] Calling Railway backend for video: ${videoId}`);
+        console.log(`[Detection POST] Calling Railway backend...`);
+        console.log(`[Detection POST] Railway URL: ${TOOL_DETECTION_BACKEND_URL}/detect`);
+        console.log(`[Detection POST] Request body:`, JSON.stringify({
+            video_id: videoId,
+            blob_url: blobUrl,
+        }));
 
         const response = await fetch(`${TOOL_DETECTION_BACKEND_URL}/detect`, {
             method: 'POST',
@@ -155,9 +177,11 @@ export async function POST(request, { params }) {
             }),
         });
 
+        console.log(`[Detection POST] Railway response status: ${response.status}`);
+
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`[Detection] Railway backend error: ${errorText}`);
+            console.error(`[Detection POST] Railway backend error: ${errorText}`);
             return NextResponse.json({
                 status: 'error',
                 videoId: videoId,
@@ -166,7 +190,7 @@ export async function POST(request, { params }) {
         }
 
         const result = await response.json();
-        console.log(`[Detection] Railway backend response:`, result);
+        console.log(`[Detection POST] Railway backend response:`, JSON.stringify(result));
 
         return NextResponse.json({
             status: result.status,
@@ -175,7 +199,8 @@ export async function POST(request, { params }) {
         });
 
     } catch (error) {
-        console.error(`[Detection] Error calling Railway backend:`, error);
+        console.error(`[Detection POST] Error calling Railway backend:`, error);
+        console.error(`[Detection POST] Error stack:`, error.stack);
         return NextResponse.json({
             status: 'error',
             videoId: videoId,

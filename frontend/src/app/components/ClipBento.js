@@ -267,7 +267,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   }, [videoId, initialAnalysisData]);
 
   // Poll surgical analysis status
-  const pollSurgicalAnalysis = async (videoId) => {
+  // refreshType: 'all', 'timeline', or 'soap'
+  const pollSurgicalAnalysis = async (videoId, refreshType = 'all') => {
     const maxAttempts = 60; // 5 minutes (5s interval)
     let attempts = 0;
 
@@ -279,14 +280,31 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const data = await response.json();
 
         if (data.status === "completed") {
-          console.log('[Surgical Analysis] Processing completed');
-          setSurgicalAnalysisData(data.data);
-          setSurgicalAnalysisProgress(100);
-          setSurgicalAnalysisStage('completed');
-          setIsLoadingSurgicalAnalysis(false);
+          console.log(`[Surgical Analysis] ${refreshType} processing completed`);
+
+          // Update the appropriate state based on refresh type
+          if (refreshType === 'timeline') {
+            if (data.data?.chapters) {
+              setChapters(data.data.chapters);
+            }
+            setIsLoadingTimeline(false);
+          } else if (refreshType === 'soap') {
+            if (data.data?.operative_note) {
+              setOperatingNote(data.data.operative_note);
+            }
+            setIsLoadingSOAP(false);
+          } else {
+            // Full refresh
+            setSurgicalAnalysisData(data.data);
+            setSurgicalAnalysisProgress(100);
+            setSurgicalAnalysisStage('completed');
+            setIsLoadingSurgicalAnalysis(false);
+          }
         } else if (data.status === "processing") {
-          setSurgicalAnalysisProgress(data.progress || 0);
-          setSurgicalAnalysisStage(data.stage || 'processing');
+          if (refreshType === 'all') {
+            setSurgicalAnalysisProgress(data.progress || 0);
+            setSurgicalAnalysisStage(data.stage || 'processing');
+          }
 
           attempts++;
           if (attempts < maxAttempts) {
@@ -299,15 +317,63 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         }
       } catch (error) {
         console.error('[Surgical Analysis] Polling error:', error);
-        setSurgicalAnalysisError(error.message);
-        setIsLoadingSurgicalAnalysis(false);
+        if (refreshType === 'timeline') {
+          setIsLoadingTimeline(false);
+        } else if (refreshType === 'soap') {
+          setIsLoadingSOAP(false);
+        } else {
+          setSurgicalAnalysisError(error.message);
+          setIsLoadingSurgicalAnalysis(false);
+        }
       }
     };
 
     poll();
   };
 
-  // Refresh surgical analysis - force re-analysis from Twelve Labs API
+  // State for separate loading indicators
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
+  const [isLoadingSOAP, setIsLoadingSOAP] = useState(false);
+
+  // Refresh only Timeline/chapters - fetches from Twelve Labs API
+  const refreshTimeline = async () => {
+    if (!videoId) return;
+
+    setIsLoadingTimeline(true);
+    setChapters(null);
+
+    try {
+      console.log('[Surgical Analysis] Refreshing Timeline only...');
+      const startResponse = await fetch(`/api/analysis/${videoId}?type=chapters`, { method: "POST" });
+      const startData = await startResponse.json();
+      console.log('[Surgical Analysis] Timeline refresh started:', startData);
+      pollSurgicalAnalysis(videoId, 'timeline');
+    } catch (error) {
+      console.error('[Surgical Analysis] Error refreshing timeline:', error);
+      setIsLoadingTimeline(false);
+    }
+  };
+
+  // Refresh only SOAP note - fetches from Twelve Labs API
+  const refreshSOAPNote = async () => {
+    if (!videoId) return;
+
+    setIsLoadingSOAP(true);
+    setOperatingNote(null);
+
+    try {
+      console.log('[Surgical Analysis] Refreshing SOAP Note only...');
+      const startResponse = await fetch(`/api/analysis/${videoId}?type=soap`, { method: "POST" });
+      const startData = await startResponse.json();
+      console.log('[Surgical Analysis] SOAP Note refresh started:', startData);
+      pollSurgicalAnalysis(videoId, 'soap');
+    } catch (error) {
+      console.error('[Surgical Analysis] Error refreshing SOAP note:', error);
+      setIsLoadingSOAP(false);
+    }
+  };
+
+  // Refresh full surgical analysis (both Timeline and SOAP) - force re-analysis
   const refreshSurgicalAnalysis = async () => {
     if (!videoId) return;
 
@@ -325,7 +391,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
       const startResponse = await fetch(`/api/analysis/${videoId}?force=true`, { method: "POST" });
       const startData = await startResponse.json();
       console.log('[Surgical Analysis] Force refresh started:', startData);
-      pollSurgicalAnalysis(videoId);
+      pollSurgicalAnalysis(videoId, 'all');
     } catch (error) {
       console.error('[Surgical Analysis] Error refreshing:', error);
       setSurgicalAnalysisError(error.message);
@@ -718,22 +784,22 @@ ${operatingNote.SOAP.Plan}
               </div>
             )}
             <button
-              onClick={refreshSurgicalAnalysis}
-              disabled={isLoadingSurgicalAnalysis}
+              onClick={refreshTimeline}
+              disabled={isLoadingTimeline}
               className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
               title="Refresh timeline analysis"
             >
-              <ArrowPathIcon className={`h-4 w-4 ${isLoadingSurgicalAnalysis ? 'animate-spin' : ''}`} />
+              <ArrowPathIcon className={`h-4 w-4 ${isLoadingTimeline ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
             </button>
           </div>
         </div>
 
-        {isLoadingChapters ? (
+        {isLoadingChapters || isLoadingTimeline ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             <span className="ml-3 text-gray-600">
-              Loading surgical phases...
+              {isLoadingTimeline ? 'Regenerating timeline...' : 'Loading surgical phases...'}
             </span>
           </div>
         ) : chaptersError ? (
@@ -808,12 +874,12 @@ ${operatingNote.SOAP.Plan}
                             </div>
                             <div className="flex items-center space-x-2">
                               <button
-                                onClick={refreshSurgicalAnalysis}
-                                disabled={isLoadingSurgicalAnalysis}
+                                onClick={refreshSOAPNote}
+                                disabled={isLoadingSOAP}
                                 className="flex items-center space-x-2 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                                 title="Refresh SOAP note analysis"
                               >
-                                <ArrowPathIcon className={`h-4 w-4 ${isLoadingSurgicalAnalysis ? 'animate-spin' : ''}`} />
+                                <ArrowPathIcon className={`h-4 w-4 ${isLoadingSOAP ? 'animate-spin' : ''}`} />
                                 <span className="text-sm font-medium">Refresh</span>
                               </button>
                               {operatingNote && operatingNote.SOAP && (
@@ -838,11 +904,11 @@ ${operatingNote.SOAP.Plan}
                         </div>
                     </div>
 
-                    {isLoading ? (
+                    {isLoading || isLoadingSOAP ? (
                         <div className="p-8 text-center">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto"></div>
               <p className="mt-4 text-gray-600">
-                Analyzing surgical video with TwelveLabs Pegasus...
+                {isLoadingSOAP ? 'Regenerating SOAP note...' : 'Analyzing surgical video with TwelveLabs Pegasus...'}
               </p>
                         </div>
           ) : !operatingNote ? (
