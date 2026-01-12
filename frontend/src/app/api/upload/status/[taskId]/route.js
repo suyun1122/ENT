@@ -29,7 +29,10 @@ export async function GET(request, { params }) {
 
         console.log('[Upload Status] Task status:', task.status, 'videoId:', task.videoId);
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        // Use request URL to get the correct base URL (works on both localhost and Vercel)
+        const requestUrl = new URL(request.url);
+        const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+        console.log('[Upload Status] Using baseUrl:', baseUrl);
 
         if (task.status === 'ready') {
             console.log('[Upload Status] Video ready, Video ID:', task.videoId);
