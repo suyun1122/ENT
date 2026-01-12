@@ -305,19 +305,17 @@ def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
     return results_data
 
 async def upload_results_to_blob(video_id: str, results_data: dict, blob_token: str):
-    """Upload detection results to Vercel Blob"""
+    """Upload detection results via Frontend API (which uses Vercel Blob SDK)"""
 
-    # Vercel Blob API endpoint
-    blob_url = "https://blob.vercel-storage.com"
+    # Frontend API endpoint - use environment variable or default
+    frontend_url = os.environ.get("FRONTEND_URL", "https://surgical-tool-detection.vercel.app")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.put(
-            f"{blob_url}/detections/{video_id}.json",
-            content=json.dumps(results_data, indent=2),
+            f"{frontend_url}/api/detect-tools/{video_id}",
+            content=json.dumps(results_data),
             headers={
-                "Authorization": f"Bearer {blob_token}",
                 "Content-Type": "application/json",
-                "x-api-version": "7"
             }
         )
 

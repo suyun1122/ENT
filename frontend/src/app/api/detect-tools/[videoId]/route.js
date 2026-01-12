@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { head } from '@vercel/blob';
+import { list, put } from '@vercel/blob';
 
 // Railway backend URL for tool detection
 const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
@@ -25,15 +25,20 @@ export async function GET(request, { params }) {
         // Note: Static files (pre-deployed) are checked by frontend first
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                const blobPath = `detections/${videoId}.json`;
-                console.log(`[Detection GET] Checking Blob: ${blobPath}`);
-                const blobHead = await head(blobPath, {
+                const blobPrefix = `detections/${videoId}`;
+                console.log(`[Detection GET] Checking Blob with prefix: ${blobPrefix}`);
+
+                const { blobs } = await list({
+                    prefix: blobPrefix,
                     token: process.env.BLOB_READ_WRITE_TOKEN
                 });
 
-                if (blobHead) {
-                    // Fetch the data from blob
-                    const response = await fetch(blobHead.url);
+                if (blobs.length > 0) {
+                    // Found the blob - fetch its content
+                    const blobUrl = blobs[0].url;
+                    console.log(`[Detection GET] Found blob: ${blobUrl}`);
+
+                    const response = await fetch(blobUrl);
                     const detectionData = await response.json();
 
                     console.log(`[Detection GET] Loaded from Vercel Blob: ${videoId}`);
@@ -45,7 +50,7 @@ export async function GET(request, { params }) {
                 }
             } catch (blobError) {
                 // Blob not found - this is normal for new videos
-                console.log(`[Detection GET] Blob not found for ${videoId}: ${blobError.message}`);
+                console.log(`[Detection GET] Blob error for ${videoId}: ${blobError.message}`);
             }
         }
 
@@ -110,12 +115,13 @@ export async function POST(request, { params }) {
 
     // Check if results already exist in Vercel Blob
     try {
-        const detectionBlobUrl = `detections/${videoId}.json`;
-        const blobHead = await head(detectionBlobUrl, {
+        const blobPrefix = `detections/${videoId}`;
+        const { blobs } = await list({
+            prefix: blobPrefix,
             token: process.env.BLOB_READ_WRITE_TOKEN
         });
 
-        if (blobHead) {
+        if (blobs.length > 0) {
             console.log(`[Detection] Already exists in Blob: ${videoId}`);
             return NextResponse.json({
                 status: 'completed',
@@ -205,6 +211,63 @@ export async function POST(request, { params }) {
             status: 'error',
             videoId: videoId,
             message: `Failed to start detection: ${error.message}`
+        }, { status: 500 });
+    }
+}
+
+export async function PUT(request, { params }) {
+    /*
+    Store tool detection results from Railway backend
+    Railway calls this endpoint to save results to Vercel Blob
+    */
+
+    try {
+        const { videoId } = await params;
+        console.log(`[Detection PUT] Storing results for videoId: ${videoId}`);
+
+        if (!videoId) {
+            return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+        }
+
+        // Parse the detection results from request body
+        const detectionData = await request.json();
+
+        if (!detectionData) {
+            return NextResponse.json({ error: 'Detection data is required' }, { status: 400 });
+        }
+
+        console.log(`[Detection PUT] Received data with ${detectionData.summary?.total_frames_processed || 0} frames`);
+
+        // Store in Vercel Blob using SDK
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            const blobPath = `detections/${videoId}.json`;
+
+            const blob = await put(blobPath, JSON.stringify(detectionData, null, 2), {
+                access: 'public',
+                token: process.env.BLOB_READ_WRITE_TOKEN,
+                contentType: 'application/json',
+            });
+
+            console.log(`[Detection PUT] Stored in Vercel Blob: ${blob.url}`);
+
+            return NextResponse.json({
+                status: 'completed',
+                videoId: videoId,
+                url: blob.url,
+                message: 'Detection results stored successfully'
+            });
+        } else {
+            console.error('[Detection PUT] BLOB_READ_WRITE_TOKEN not configured');
+            return NextResponse.json({
+                error: 'Blob storage not configured'
+            }, { status: 503 });
+        }
+
+    } catch (error) {
+        console.error('[Detection PUT] Error:', error);
+        return NextResponse.json({
+            error: 'Failed to store detection results',
+            message: error.message
         }, { status: 500 });
     }
 }
