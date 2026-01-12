@@ -186,7 +186,7 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
         if temp_video_path and os.path.exists(temp_video_path):
             os.unlink(temp_video_path)
 
-def run_inference(video_path: str, video_id: str, frame_skip: int = 5):
+def run_inference(video_path: str, video_id: str, frame_skip: int = 24):
     """Run YOLO inference on video"""
 
     cap = cv2.VideoCapture(video_path)
