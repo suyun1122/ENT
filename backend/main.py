@@ -186,7 +186,7 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
         if temp_video_path and os.path.exists(temp_video_path):
             os.unlink(temp_video_path)
 
-def run_inference(video_path: str, video_id: str, frame_skip: int = 24):
+def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
     """Run YOLO inference on video"""
 
     cap = cv2.VideoCapture(video_path)
@@ -275,6 +275,10 @@ def run_inference(video_path: str, video_id: str, frame_skip: int = 24):
                     results_data["detections"].append(frame_detections)
 
                 processed_frames += 1
+
+                # Log progress every 20 processed frames
+                if processed_frames % 20 == 0:
+                    print(f"[Inference] Processed {processed_frames} frames (frame {frame_idx}/{total_frames})")
 
                 # Update progress
                 if processed_frames % 50 == 0:
