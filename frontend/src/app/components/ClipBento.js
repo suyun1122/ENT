@@ -141,18 +141,31 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setToolDetectionError(data.error);
           setIsLoadingToolDetection(false);
           return;
-        } else if (data.status === "processing") {
-          // Update progress from server
-          console.log(`[Tool Detection] Progress: ${data.progress}%, Stage: ${data.stage}`);
-          setToolDetectionProgress(data.progress || 0);
-          setToolDetectionStage(data.stage || 'processing');
+        } else if (data.status === "processing" || data.status === "not_found") {
+          // Show estimated progress based on elapsed time
+          // Railway typically takes 1-3 minutes depending on video length
+          const estimatedProgress = Math.min(90, Math.round((attempts / 24) * 90)); // ~2 min to 90%
+
+          let stage;
+          if (attempts >= 24) {
+            // Taking longer than expected (> 2 min)
+            stage = 'finalizing (taking longer than expected, please wait...)';
+          } else {
+            const stages = ['downloading video', 'loading AI model', 'analyzing frames', 'detecting tools', 'saving results'];
+            const stageIndex = Math.min(Math.floor(attempts / 5), stages.length - 1);
+            stage = stages[stageIndex];
+          }
+
+          console.log(`[Tool Detection] Waiting... attempt ${attempts}, estimated progress: ${estimatedProgress}%`);
+          setToolDetectionProgress(estimatedProgress);
+          setToolDetectionStage(stage);
         }
 
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(poll, 5000); // Poll every 5 seconds
         } else {
-          setToolDetectionError("Processing timeout");
+          setToolDetectionError("Processing timeout - please try again later");
           setIsLoadingToolDetection(false);
         }
       } catch (error) {
@@ -300,20 +313,35 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             setSurgicalAnalysisStage('completed');
             setIsLoadingSurgicalAnalysis(false);
           }
-        } else if (data.status === "processing") {
+        } else if (data.status === "processing" || data.status === "not_found") {
+          // Show estimated progress based on elapsed time
+          // TwelveLabs analysis typically takes 1-2 minutes
           if (refreshType === 'all') {
-            setSurgicalAnalysisProgress(data.progress || 0);
-            setSurgicalAnalysisStage(data.stage || 'processing');
+            const estimatedProgress = Math.min(90, Math.round((attempts / 20) * 90)); // ~100s to 90%
+
+            let stage;
+            if (attempts >= 20) {
+              // Taking longer than expected (> ~1.7 min)
+              stage = 'finalizing (taking longer than expected, please wait...)';
+            } else {
+              const stages = ['starting analysis', 'analyzing video content', 'generating timeline', 'creating SOAP note', 'finalizing'];
+              const stageIndex = Math.min(Math.floor(attempts / 4), stages.length - 1);
+              stage = stages[stageIndex];
+            }
+
+            console.log(`[Surgical Analysis] Waiting... attempt ${attempts}, estimated progress: ${estimatedProgress}%`);
+            setSurgicalAnalysisProgress(estimatedProgress);
+            setSurgicalAnalysisStage(stage);
           }
 
           attempts++;
           if (attempts < maxAttempts) {
             setTimeout(poll, 5000);
           } else {
-            throw new Error('Surgical analysis processing timeout');
+            throw new Error('Surgical analysis processing timeout - please try again later');
           }
-        } else {
-          throw new Error(`Unexpected status: ${data.status}`);
+        } else if (data.status === "error") {
+          throw new Error(data.message || 'Analysis failed');
         }
       } catch (error) {
         console.error('[Surgical Analysis] Polling error:', error);
@@ -608,9 +636,12 @@ ${operatingNote.SOAP.Plan}
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">
                       Processing Tool Detection
                     </h3>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <p className="text-sm text-gray-600 mb-1">
                       Analyzing video with YOLO11m model to identify surgical
                       instruments...
+                    </p>
+                    <p className="text-xs text-amber-600 font-medium mb-3">
+                      ⏱️ This typically takes 2-3 minutes for longer videos. Please wait.
                     </p>
                     <div className="bg-white/50 rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between text-sm">
