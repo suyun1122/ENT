@@ -2,6 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import { UploadProvider } from './contexts/UploadContext';
+import UploadIndicator from './components/UploadIndicator';
 
 export function Providers({ children }) {
   const [queryClient] = useState(() => new QueryClient({
@@ -21,7 +23,10 @@ export function Providers({ children }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <UploadProvider>
+        {children}
+        <UploadIndicator />
+      </UploadProvider>
     </QueryClientProvider>
   );
 }

@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import ClipSort from '../components/ClipSort';
 import UploadVideo from '../components/UploadVideo';
 import {
   CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import ClipCard from '../components/ClipCard';
+import { useUpload } from '../contexts/UploadContext';
 
 export default function Clips() {
 
@@ -14,28 +15,10 @@ export default function Clips() {
   const [clipData, setClipData] = useState([]);
   const [filteredClipData, setFilteredClipData] = useState([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const { onUploadComplete } = useUpload();
 
-  useEffect(() => {
-    loadClipData();
-    // Trigger animations after component mounts
-    const timer = setTimeout(() => setIsVisible(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Update filtered data when clipData changes
-  useEffect(() => {
-    setFilteredClipData(clipData);
-  }, [clipData]);
-
-  // Handle filter changes from ClipSort component
-  const handleFilterChange = (filteredClips, isSearch = false) => {
-    setFilteredClipData(filteredClips);
-    setIsSearchActive(isSearch);
-  };
-
-  const sampleIds = [('13380578_3840_2160_25fps.mp4', '2ec57a48-d330-4404-a26a-0587348fa865')]
-
-  const loadClipData = async () => {
+  // Memoize loadClipData to avoid dependency issues
+  const loadClipData = useCallback(async () => {
 
     console.log("Loading clip data from TwelveLabs");
 
@@ -120,7 +103,34 @@ export default function Clips() {
         }
         return;
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadClipData();
+    // Trigger animations after component mounts
+    const timer = setTimeout(() => setIsVisible(true), 100);
+    return () => clearTimeout(timer);
+  }, [loadClipData]);
+
+  // Subscribe to upload completion to refresh the list
+  useEffect(() => {
+    const unsubscribe = onUploadComplete(() => {
+      console.log('Upload completed, refreshing clip list...');
+      loadClipData();
+    });
+    return unsubscribe;
+  }, [onUploadComplete, loadClipData]);
+
+  // Update filtered data when clipData changes
+  useEffect(() => {
+    setFilteredClipData(clipData);
+  }, [clipData]);
+
+  // Handle filter changes from ClipSort component
+  const handleFilterChange = (filteredClips, isSearch = false) => {
+    setFilteredClipData(filteredClips);
+    setIsSearchActive(isSearch);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

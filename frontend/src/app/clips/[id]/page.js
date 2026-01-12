@@ -1,13 +1,11 @@
 "use client";
 
 import ClipBento from "@/app/components/ClipBento";
-import React, { useState, useEffect, useRef } from "react";
-import ChapterTimeline from "@/app/components/ChapterTimeline";
+import React, { useState, useEffect } from "react";
 
 export default function ClipDetailPage({ params }) {
 
     const [clipData, setClipData] = useState(null);
-    const [buttonMetadata, setButtonMetadata] = useState([]);
     const [cachedData, setCachedData] = useState(null);
     const [error, setError] = useState(null);
     const [isRetrying, setIsRetrying] = useState(false);
@@ -21,11 +19,10 @@ export default function ClipDetailPage({ params }) {
         loadClipData();
     }, []);
 
-    // generate button metadata after clipData is available
+    // Load cached surgical analysis data after clipData is available
     useEffect(() => {
         if (clipData && clipData.pegasusId) {
             console.log(clipData)
-            generateButtonMetadata();
             generateCacheData()
         }
     }, [clipData]);
@@ -43,8 +40,6 @@ export default function ClipDetailPage({ params }) {
             return () => clearTimeout(timer);
         }
     }, [error]);
-
-    const sampleIds = [['13380578_3840_2160_25fps.mp4', '2ec57a48-d330-4404-a26a-0587348fa865']];
 
     const loadClipData = async () => {
 
@@ -135,124 +130,6 @@ export default function ClipDetailPage({ params }) {
         }
     }
 
-    async function generateButtonMetadata() {
-        const prompt = `
-        Generate button metadata for the factory video attached for compliance issues, issues with personal protective equipment usage, and potential improvements for efficiency.
-
-        Each button should have the following data:
-        - title: A concise title summarizing the issue or improvement.
-        - description: A detailed description explaining the issue or improvement, its implications, and recommended actions.
-        - category: One of the following categories - compliance, improvement, personal protective equipment.
-        - x: X coordinate as a percentage (0-100) representing the horizontal position of the button on the video frame percentage values relative to a 16:9 aspect ratio video player that is 1400px wide. Should be extremely accurate.
-        - y: Y coordinate as a percentage (0-100) representing the vertical position of the button on the video frame percentage values relative to a 16:9 aspect ratio video player that is 1400px wide. Should be extremely accurate.
-        - start: Start time in seconds when the button should appear.
-        - end: End time in seconds when the button should disappear.
-        - link: (optional) A URL linking to more information or resources related to the issue or improvement.
-
-        If multiple issues or improvements are identified, create separate buttons for each. Ensure that the coordinates accurately reflect the location of the issue or improvement in the video frame.
-        Ensure x, y percentages are highly accurate. For example, if the issue is with gloves, the percentages should point to the hands of the worker.
-        Take into account the factory setting in video content and include relevant safety and compliance considerations into your description.
-
-        Include at least 3 buttons if applicable.
-
-        Respond with a valid JSON array only, no markdown formatting:
-
-        [{
-            "title": "Missing Hard Hat",
-            "description": "Worker on the left side of the frame is not wearing a hard hat while operating machinery, which is a safety violation. Recommend immediate compliance with PPE regulations to prevent head injuries.",
-            "category": "personal protective equipment",
-            "x": 32,
-            "y": 78,
-            "start": 15,
-            "end": 45,
-            "link": "https://www.osha.gov/personal-protective-equipment"
-        }]
-
-        `;
-
-        try {
-
-            if (!clipData || !clipData.pegasusId) {
-                console.warn('No clipData available for analysis yet');
-                return;
-            }
-
-            const response = await fetch('/api/analysis', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    videoId: clipData['pegasusId'],
-                    userQuery: prompt
-                })
-            })
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error("Failed to analyze video", errorData);
-
-                // Check for video_not_ready error
-                if (errorData.code === 'video_not_ready') {
-                    setError({
-                        type: 'video_not_ready',
-                        message: errorData.message || 'The video is still being indexed. Please try again once the indexing process is complete.'
-                    });
-                    return;
-                }
-
-                // Check for video_not_uploaded error
-                if (errorData.code === 'video_not_uploaded') {
-                    setError({
-                        type: 'video_not_uploaded',
-                        message: errorData.message || 'The video is still being uploaded and processed. Please wait for the upload to complete.'
-                    });
-                    return;
-                }
-
-                setError({
-                    type: 'analysis_error',
-                    message: 'Failed to analyze video. Please try again.'
-                });
-                return;
-            }
-
-            const data = await response.json();
-            console.log("Analysis API response:", data);
-
-            // Check if the response has the expected structure
-            if (data && data.data) {
-                try {
-                    const json_data = JSON.parse(data['data'].replace(/^\s*```json\s*/, '').replace(/\s*```\s*$/, ''));
-                    console.log("Analysis response", json_data);
-
-                    setButtonMetadata(json_data);
-                    setError(null); // Clear any previous errors
-                } catch (parseError) {
-                    console.error("Error parsing analysis response:", parseError);
-                    setError({
-                        type: 'analysis_error',
-                        message: 'Failed to parse analysis response. The video may still be processing.'
-                    });
-                }
-            } else {
-                console.warn("Unexpected analysis response structure:", data);
-                setError({
-                    type: 'analysis_error',
-                    message: 'Unexpected response format from analysis service.'
-                });
-            }
-
-        }
-
-        catch (error) {
-            console.error("Error during analysis", error);
-            setError({
-                type: 'analysis_error',
-                message: 'An error occurred during video analysis. Please try again.'
-            });
-            return;
-        }
-    }
-
     async function generateCacheData() {
 
         if (!clipData || !clipData.pegasusId) {
@@ -313,7 +190,6 @@ export default function ClipDetailPage({ params }) {
         setRetryCount(prev => prev + 1);
 
         try {
-            await generateButtonMetadata();
             await generateCacheData();
         } catch (error) {
             console.error("Error during retry", error);
@@ -335,7 +211,6 @@ export default function ClipDetailPage({ params }) {
             }
 
             try {
-                await generateButtonMetadata();
                 await generateCacheData();
 
                 // If successful, stop auto-retry
@@ -542,7 +417,6 @@ export default function ClipDetailPage({ params }) {
                 {clipData ? (
                     <ClipBento
                         clipData={clipData}
-                        buttonMetadata={buttonMetadata}
                         videoId={clipData['pegasusId']}
                         initialAnalysisData={cachedData?.data}
                     />

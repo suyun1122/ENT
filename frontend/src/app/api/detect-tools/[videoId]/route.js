@@ -62,15 +62,6 @@ export async function GET(request, { params }) {
         }
     }
 
-    // Check if processing is in progress
-    if (processingStatus.has(videoId)) {
-        return NextResponse.json({
-            status: 'processing',
-            videoId: videoId,
-            ...processingStatus.get(videoId)
-        });
-    }
-
     // No results found
     return NextResponse.json({
         status: 'not_found',
@@ -133,8 +124,9 @@ export async function POST(request, { params }) {
     // Require blobUrl for new detections
     if (!blobUrl) {
         return NextResponse.json({
-            error: 'blobUrl is required to start detection',
-            videoId: videoId
+            status: 'unavailable',
+            videoId: videoId,
+            message: 'Video URL not available for tool detection.'
         }, { status: 400 });
     }
 
@@ -191,4 +183,3 @@ export async function POST(request, { params }) {
         }, { status: 500 });
     }
 }
-

@@ -6,22 +6,10 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ShieldCheckIcon,
   ClockIcon,
-  UserGroupIcon,
   DocumentTextIcon,
-  ChartBarIcon,
-  EyeIcon,
-  CogIcon,
-  ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
   ArrowDownTrayIcon,
-  CurrencyDollarIcon,
   WrenchScrewdriverIcon,
-  LightBulbIcon,
-  CalendarDaysIcon,
-  UserIcon,
-  ClipboardDocumentListIcon,
   PencilIcon,
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
@@ -40,13 +28,11 @@ const DEFAULT_GEOLOCATION = HAS_DEFAULT_GEO
     ? { coords: { latitude: DEFAULT_LAT, longitude: DEFAULT_LON } }
     : null;
 
-export default function ClipBento({ clipData, buttonMetadata, videoId, initialAnalysisData }) {
+export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   const [operatingNote, setOperatingNote] = useState(null);
   const [chapters, setChapters] = useState(null);
-    const [forensicsData, setForensicsData] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [reportGenerated, setReportGenerated] = useState(false);
-    const [correctiveActionStatuses, setCorrectiveActionStatuses] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [reportGenerated, setReportGenerated] = useState(false);
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
   const [chaptersError, setChaptersError] = useState(null);
   const [isEditingSOAP, setIsEditingSOAP] = useState({
@@ -473,287 +459,52 @@ export default function ClipBento({ clipData, buttonMetadata, videoId, initialAn
     }));
   };
 
-    const mockForensicsData = {
-        compliance: {
-            violations: [
-                {
-                    id: 1,
-          type: "PPE Violation",
-          severity: "high",
-          description:
-            "Worker at the sewing station is not wearing protective gloves while the machine is in operation.",
-          timestamp: "00:05",
-          location: "Sewing Station 3",
-          regulation: "OSHA 1910.132",
-          rootCause: "Training Gap",
-          potentialFineUSD: 15625,
-                },
-                {
-                    id: 2,
-          type: "Safety Protocol",
-          severity: "medium",
-          description:
-            "Improper lifting technique observed during material handling",
-          timestamp: "01:32",
-          location: "Warehouse Section B",
-          regulation: "OSHA 1910.178",
-          rootCause: "Process Flaw",
-          potentialFineUSD: 8750,
-        },
-      ],
-      scoringMethodology:
-        "Base score of 100, with deductions for violations based on severity (High: -15, Medium: -10, Low: -5).",
-      score: 75,
-        },
-        riskAssessment: {
-      overallSafetyRisk: "medium",
-      overallOperationalRisk: "low",
-            riskFactors: [
-        {
-          factor: "Lack of Consistent PPE Usage",
-          level: "medium",
-          impact: "Worker Safety",
-        },
-        {
-          factor: "Equipment Operation",
-          level: "low",
-          impact: "Production Efficiency",
-        },
-        {
-          factor: "Environmental",
-          level: "medium",
-          impact: "Workplace Safety",
-        },
-      ],
-        },
-        correctiveActions: [
-            {
-                violationId: 1,
-        action:
-          "Conduct mandatory refresher training on PPE requirements for all sewing station operators and install a glove dispenser at Station 3.",
-        assignee: "Shift Supervisor",
-        dueDate: "2025-10-18",
-        status: "Pending",
-            },
-            {
-                violationId: 2,
-        action:
-          "Implement proper lifting technique training and provide mechanical lifting aids.",
-        assignee: "Safety Manager",
-        dueDate: "2025-10-20",
-        status: "In Progress",
-      },
-        ],
-        operationalEfficiency: {
-            identifiedWastes: [
-                {
-          type: "Waiting (Muda)",
-          timestamp: "00:12",
-          description:
-            "Worker at the packing station is idle for 15 seconds waiting for boxes to arrive on the conveyor belt, indicating a bottleneck upstream.",
-        },
-        {
-          type: "Unnecessary Motion (Muda)",
-          timestamp: "00:21",
-          description:
-            "Worker at Assembly Line B has to walk 10 feet to retrieve a tool, which should be located at their station.",
-        },
-            ],
-            recommendations: [
-        "Adjust conveyor belt speed from the primary cutting area to better match the packing station's cycle time.",
-        "Implement a 5S program at Assembly Line B to ensure all necessary tools are within arm's reach.",
-      ],
-        },
-        summary: {
-      duration: "00:30",
-            workersPresent: 2,
-            safetyIncidents: 0,
-            keyFindings: [
-        "While no injuries occurred, the observed PPE violation at Sewing Station 3 represents a significant and recurring risk.",
-        "Analysis of workflow indicates a minor bottleneck causing intermittent downtime at the final packing station.",
-      ],
-    },
-  };
-
+    // Export SOAP note to PDF
     const exportToPDF = () => {
-        // In real implementation, this would generate and download a PDF
-    const element = document.createElement("a");
-    const file = new Blob(
-      ["Compliance Report PDF content would be generated here"],
-      { type: "application/pdf" }
-    );
+        if (!operatingNote?.SOAP) return;
+
+        const content = `SOAP Note
+
+SUBJECTIVE
+${operatingNote.SOAP.Subjective}
+
+OBJECTIVE
+${operatingNote.SOAP.Objective}
+
+ASSESSMENT
+${operatingNote.SOAP.Assessment}
+
+PLAN
+${operatingNote.SOAP.Plan}
+`;
+
+        const element = document.createElement("a");
+        const file = new Blob([content], { type: "text/plain" });
         element.href = URL.createObjectURL(file);
-    element.download = `compliance-report-${
-      new Date().toISOString().split("T")[0]
-    }.pdf`;
+        element.download = `soap-note-${new Date().toISOString().split("T")[0]}.txt`;
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
     };
 
+    // Export SOAP note to CSV
     const exportToCSV = () => {
-        // Generate CSV content from forensics data
-        const csvContent = generateCSVContent();
-    const element = document.createElement("a");
-    const file = new Blob([csvContent], { type: "text/csv" });
+        if (!operatingNote?.SOAP) return;
+
+        let csv = "SOAP Note\n\n";
+        csv += "Section,Content\n";
+        csv += `"Subjective","${operatingNote.SOAP.Subjective.replace(/"/g, '""')}"\n`;
+        csv += `"Objective","${operatingNote.SOAP.Objective.replace(/"/g, '""')}"\n`;
+        csv += `"Assessment","${operatingNote.SOAP.Assessment.replace(/"/g, '""')}"\n`;
+        csv += `"Plan","${operatingNote.SOAP.Plan.replace(/"/g, '""')}"\n`;
+
+        const element = document.createElement("a");
+        const file = new Blob([csv], { type: "text/csv" });
         element.href = URL.createObjectURL(file);
-    element.download = `compliance-report-${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
+        element.download = `soap-note-${new Date().toISOString().split("T")[0]}.csv`;
         document.body.appendChild(element);
         element.click();
         document.body.removeChild(element);
-    };
-
-    const generateCSVContent = () => {
-    if (!forensicsData) return "";
-
-    let csv = "Compliance Report\n\n";
-    csv += "Compliance Score," + forensicsData.compliance.score + "%\n";
-    csv +=
-      "Scoring Methodology," +
-      forensicsData.compliance.scoringMethodology +
-      "\n\n";
-
-    csv += "Violations\n";
-    csv +=
-      "ID,Type,Severity,Description,Timestamp,Location,Regulation,Root Cause,Potential Fine (USD)\n";
-    forensicsData.compliance.violations.forEach((violation) => {
-            csv += `"${violation.id}","${violation.type}","${violation.severity}","${violation.description}","${violation.timestamp}","${violation.location}","${violation.regulation}","${violation.rootCause}","${violation.potentialFineUSD}"\n`;
-        });
-
-    csv += "\nRisk Assessment\n";
-    csv +=
-      "Overall Safety Risk," +
-      forensicsData.riskAssessment.overallSafetyRisk +
-      "\n";
-    csv +=
-      "Overall Operational Risk," +
-      forensicsData.riskAssessment.overallOperationalRisk +
-      "\n";
-    csv += "Factor,Level,Impact\n";
-    forensicsData.riskAssessment.riskFactors.forEach((factor) => {
-            csv += `"${factor.factor}","${factor.level}","${factor.impact}"\n`;
-        });
-
-    csv += "\nCorrective Actions\n";
-    csv += "Violation ID,Action,Assignee,Due Date,Status\n";
-    forensicsData.correctiveActions.forEach((action) => {
-            csv += `"${action.violationId}","${action.action}","${action.assignee}","${action.dueDate}","${action.status}"\n`;
-        });
-
-    csv += "\nOperational Efficiency\n";
-    csv += "Waste Type,Timestamp,Description\n";
-    forensicsData.operationalEfficiency.identifiedWastes.forEach((waste) => {
-            csv += `"${waste.type}","${waste.timestamp}","${waste.description}"\n`;
-        });
-
-    csv += "\nRecommendations\n";
-    forensicsData.operationalEfficiency.recommendations.forEach((rec) => {
-            csv += `"${rec}"\n`;
-        });
-
-    csv += "\nSummary\n";
-    csv += "Duration," + forensicsData.summary.duration + "\n";
-    csv += "Workers Present," + forensicsData.summary.workersPresent + "\n";
-    csv += "Safety Incidents," + forensicsData.summary.safetyIncidents + "\n";
-
-    csv += "\nKey Findings\n";
-    forensicsData.summary.keyFindings.forEach((finding) => {
-            csv += `"${finding}"\n`;
-        });
-
-        return csv;
-    };
-
-    const getSeverityColor = (severity) => {
-    switch (severity) {
-      case "high":
-        return "text-red-600 bg-red-50 border-red-200";
-      case "medium":
-        return "text-yellow-600 bg-yellow-50 border-yellow-200";
-      case "low":
-        return "text-green-600 bg-green-50 border-green-200";
-      default:
-        return "text-gray-600 bg-gray-50 border-gray-200";
-        }
-    };
-
-    const getRiskLevelColor = (level) => {
-    switch (level) {
-      case "high":
-        return "text-red-600";
-      case "medium":
-        return "text-yellow-600";
-      case "low":
-        return "text-green-600";
-      default:
-        return "text-gray-600";
-        }
-    };
-
-    const getEventTypeIcon = (type) => {
-    switch (type) {
-      case "warning":
-        return <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500" />;
-      case "info":
-        return <CheckCircleIcon className="h-4 w-4 text-blue-500" />;
-      case "error":
-        return <XCircleIcon className="h-4 w-4 text-red-500" />;
-      default:
-        return <ClockIcon className="h-4 w-4 text-gray-500" />;
-        }
-    };
-
-    const getActionStatusColor = (status) => {
-    switch (status) {
-      case "Approved":
-        return "text-green-600 bg-green-50 border-green-200";
-      case "Declined":
-        return "text-red-600 bg-red-50 border-red-200";
-      case "Pending":
-        return "text-yellow-600 bg-yellow-50 border-yellow-200";
-      case "In Progress":
-        return "text-blue-600 bg-blue-50 border-blue-200";
-      case "Completed":
-        return "text-green-600 bg-green-50 border-green-200";
-      case "Overdue":
-        return "text-red-600 bg-red-50 border-red-200";
-      default:
-        return "text-gray-600 bg-gray-50 border-gray-200";
-        }
-    };
-
-    const getWasteTypeColor = (type) => {
-    switch (type) {
-      case "Waiting (Muda)":
-        return "text-orange-600 bg-orange-50 border-orange-200";
-      case "Unnecessary Motion (Muda)":
-        return "text-purple-600 bg-purple-50 border-purple-200";
-      case "Overproduction (Muda)":
-        return "text-red-600 bg-red-50 border-red-200";
-      case "Defects (Muda)":
-        return "text-pink-600 bg-pink-50 border-pink-200";
-      case "Inventory (Muda)":
-        return "text-indigo-600 bg-indigo-50 border-indigo-200";
-      case "Transportation (Muda)":
-        return "text-cyan-600 bg-cyan-50 border-cyan-200";
-      case "Overprocessing (Muda)":
-        return "text-teal-600 bg-teal-50 border-teal-200";
-      default:
-        return "text-gray-600 bg-gray-50 border-gray-200";
-        }
-    };
-
-    const handleActionApproval = (actionIndex, status) => {
-    setCorrectiveActionStatuses((prev) => ({
-            ...prev,
-      [actionIndex]: status,
-        }));
-    };
-
-    const getActionStatus = (actionIndex, originalStatus) => {
-        return correctiveActionStatuses[actionIndex] || originalStatus;
     };
 
     return (
@@ -768,12 +519,11 @@ export default function ClipBento({ clipData, buttonMetadata, videoId, initialAn
                             thumbnailUrl={clipData.hls?.thumbnail_urls?.[0]}
                             height={null}
                             width={null}
-                            button_metadata={buttonMetadata}
-              toolDetectionData={toolDetectionData}
-              showToolDetection={showToolDetection}
-              enabledTools={enabledTools}
-            />
-          )}
+                            toolDetectionData={toolDetectionData}
+                            showToolDetection={showToolDetection}
+                            enabledTools={enabledTools}
+                        />
+                    )}
 
           {/* Tool Detection Status & Filter Panel */}
           <div className="mt-4">
