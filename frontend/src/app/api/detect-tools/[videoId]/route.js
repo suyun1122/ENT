@@ -131,6 +131,44 @@ export async function GET(request, { params }) {
             });
         }
 
+        // Before returning not_found, check Railway backend status
+        // (handles case where processingVideos Map was cleared but Railway is still processing)
+        if (TOOL_DETECTION_BACKEND_URL) {
+            try {
+                console.log(`[Detection GET] Checking Railway status for ${videoId}...`);
+                const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
+                if (statusResponse.ok) {
+                    const railwayStatus = await statusResponse.json();
+                    console.log(`[Detection GET] Railway status:`, railwayStatus);
+
+                    if (railwayStatus.status === 'processing') {
+                        // Railway is still processing - add to local map and return status
+                        processingVideos.set(videoId, { startTime: Date.now() });
+                        return NextResponse.json({
+                            status: 'processing',
+                            videoId: videoId,
+                            progress: railwayStatus.progress || 0,
+                            stage: railwayStatus.stage || 'processing',
+                            currentFrame: railwayStatus.current_frame || 0,
+                            totalFrames: railwayStatus.total_frames || 0,
+                            processedFrames: railwayStatus.processed_frames || 0,
+                            message: 'Tool detection is currently in progress'
+                        });
+                    } else if (railwayStatus.status === 'completed' && railwayStatus.data) {
+                        // Railway completed - return the data directly
+                        console.log(`[Detection GET] Railway has completed data, returning it`);
+                        return NextResponse.json({
+                            status: 'completed',
+                            videoId: videoId,
+                            data: railwayStatus.data
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
+            }
+        }
+
         // No results found
         console.log(`[Detection GET] No results found for ${videoId}`);
         return NextResponse.json({

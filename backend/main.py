@@ -198,8 +198,13 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
         if temp_video_path and os.path.exists(temp_video_path):
             os.unlink(temp_video_path)
 
-def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
-    """Run YOLO inference on video"""
+def run_inference(video_path: str, video_id: str):
+    """Run YOLO inference on video with dynamic frame_skip based on video length"""
+
+    # Dynamic frame_skip settings for Railway free tier (1GB RAM, shared CPU)
+    TARGET_FRAMES = 100  # Target number of frames to process
+    MIN_FRAME_SKIP = 30  # Minimum skip (short videos won't be over-analyzed)
+    MAX_FRAME_SKIP = 300 # Maximum skip (long videos still get enough samples)
 
     cap = cv2.VideoCapture(video_path)
 
@@ -213,7 +218,13 @@ def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     duration = total_frames / fps if fps > 0 else 0
 
-    print(f"[Inference] Video: {width}x{height}, {fps} FPS, {total_frames} frames")
+    # Calculate dynamic frame_skip
+    calculated_skip = max(1, total_frames // TARGET_FRAMES)
+    frame_skip = max(MIN_FRAME_SKIP, min(MAX_FRAME_SKIP, calculated_skip))
+    estimated_frames_to_process = total_frames // frame_skip
+
+    print(f"[Inference] Video: {width}x{height}, {fps} FPS, {total_frames} frames, duration: {duration:.1f}s")
+    print(f"[Inference] Dynamic frame_skip: {frame_skip} (will process ~{estimated_frames_to_process} frames)")
 
     # Update status with total frames info
     processing_status[video_id] = {
