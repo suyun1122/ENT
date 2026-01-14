@@ -108,6 +108,23 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         } else if (data.status === "processing") {
           console.log("[Tool Detection] Already processing, polling...");
           setIsLoadingToolDetection(true);
+
+          // Show initial progress if available
+          if (data.progress !== undefined && data.progress > 0) {
+            setToolDetectionProgress(data.progress);
+            let stage = data.stage || 'processing';
+            const stageNames = {
+              'queued': 'queued',
+              'downloading': 'downloading video',
+              'loading_model': 'loading AI model',
+              'analyzing': data.totalFrames > 0
+                ? `analyzing frames (${data.currentFrame?.toLocaleString()}/${data.totalFrames?.toLocaleString()})`
+                : 'analyzing frames',
+              'uploading': 'saving results'
+            };
+            setToolDetectionStage(stageNames[stage] || stage);
+          }
+
           pollToolDetection(videoId);
         }
       } catch (error) {
@@ -143,23 +160,43 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setIsLoadingToolDetection(false);
           return;
         } else if (data.status === "processing" || data.status === "not_found") {
-          // Show estimated progress based on elapsed time
-          // Railway typically takes 1-3 minutes depending on video length
-          const estimatedProgress = Math.min(90, Math.round((attempts / 24) * 90)); // ~2 min to 90%
+          // Use actual progress from Railway backend if available
+          if (data.progress !== undefined && data.progress > 0) {
+            const progress = data.progress;
+            let stage = data.stage || 'processing';
 
-          let stage;
-          if (attempts >= 24) {
-            // Taking longer than expected (> 2 min)
-            stage = 'finalizing (taking longer than expected, please wait...)';
+            // Format stage name for display
+            const stageNames = {
+              'queued': 'queued',
+              'downloading': 'downloading video',
+              'loading_model': 'loading AI model',
+              'analyzing': data.totalFrames > 0
+                ? `analyzing frames (${data.currentFrame?.toLocaleString()}/${data.totalFrames?.toLocaleString()})`
+                : 'analyzing frames',
+              'uploading': 'saving results'
+            };
+            stage = stageNames[stage] || stage;
+
+            console.log(`[Tool Detection] Progress: ${progress}%, stage: ${stage}`);
+            setToolDetectionProgress(progress);
+            setToolDetectionStage(stage);
           } else {
-            const stages = ['downloading video', 'loading AI model', 'analyzing frames', 'detecting tools', 'saving results'];
-            const stageIndex = Math.min(Math.floor(attempts / 5), stages.length - 1);
-            stage = stages[stageIndex];
-          }
+            // Fallback to estimated progress based on elapsed time
+            const estimatedProgress = Math.min(90, Math.round((attempts / 24) * 90));
 
-          console.log(`[Tool Detection] Waiting... attempt ${attempts}, estimated progress: ${estimatedProgress}%`);
-          setToolDetectionProgress(estimatedProgress);
-          setToolDetectionStage(stage);
+            let stage;
+            if (attempts >= 24) {
+              stage = 'finalizing (taking longer than expected, please wait...)';
+            } else {
+              const stages = ['downloading video', 'loading AI model', 'analyzing frames', 'detecting tools', 'saving results'];
+              const stageIndex = Math.min(Math.floor(attempts / 5), stages.length - 1);
+              stage = stages[stageIndex];
+            }
+
+            console.log(`[Tool Detection] Waiting... attempt ${attempts}, estimated progress: ${estimatedProgress}%`);
+            setToolDetectionProgress(estimatedProgress);
+            setToolDetectionStage(stage);
+          }
         }
 
         attempts++;

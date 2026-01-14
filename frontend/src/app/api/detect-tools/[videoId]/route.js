@@ -6,6 +6,22 @@ import { list, put } from '@vercel/blob';
 // Railway backend URL for tool detection
 const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
 
+// In-memory tracking of videos currently being processed
+// Key: videoId, Value: { startTime: Date, status: 'processing' }
+const processingVideos = new Map();
+
+// Cleanup old processing entries (older than 10 minutes)
+const PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
+function cleanupStaleProcessing() {
+    const now = Date.now();
+    for (const [videoId, info] of processingVideos.entries()) {
+        if (now - info.startTime > PROCESSING_TIMEOUT_MS) {
+            console.log(`[Detection] Cleaning up stale processing entry: ${videoId}`);
+            processingVideos.delete(videoId);
+        }
+    }
+}
+
 export async function GET(request, { params }) {
     /*
     Get the tool detection results for a specific video
@@ -71,6 +87,48 @@ export async function GET(request, { params }) {
                 console.error('[Detection GET] Error reading detection file:', error);
                 return NextResponse.json({ error: 'Failed to read detection data' }, { status: 500 });
             }
+        }
+
+        // Check if video is currently being processed
+        cleanupStaleProcessing();
+        if (processingVideos.has(videoId)) {
+            const processingInfo = processingVideos.get(videoId);
+            const elapsedSeconds = Math.floor((Date.now() - processingInfo.startTime) / 1000);
+            console.log(`[Detection GET] Video ${videoId} is currently processing (${elapsedSeconds}s elapsed)`);
+
+            // Try to get actual progress from Railway backend
+            if (TOOL_DETECTION_BACKEND_URL) {
+                try {
+                    const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
+                    if (statusResponse.ok) {
+                        const railwayStatus = await statusResponse.json();
+                        if (railwayStatus.status === 'processing' || railwayStatus.status === 'completed') {
+                            console.log(`[Detection GET] Railway status for ${videoId}:`, railwayStatus);
+                            return NextResponse.json({
+                                status: railwayStatus.status,
+                                videoId: videoId,
+                                progress: railwayStatus.progress || 0,
+                                stage: railwayStatus.stage || 'processing',
+                                currentFrame: railwayStatus.current_frame || 0,
+                                totalFrames: railwayStatus.total_frames || 0,
+                                processedFrames: railwayStatus.processed_frames || 0,
+                                elapsedSeconds: elapsedSeconds,
+                                message: 'Tool detection is currently in progress'
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
+                }
+            }
+
+            // Fallback to basic processing status
+            return NextResponse.json({
+                status: 'processing',
+                videoId: videoId,
+                elapsedSeconds: elapsedSeconds,
+                message: 'Tool detection is currently in progress'
+            });
         }
 
         // No results found
@@ -144,6 +202,17 @@ export async function POST(request, { params }) {
         });
     }
 
+    // Check if video is already being processed
+    cleanupStaleProcessing();
+    if (processingVideos.has(videoId)) {
+        console.log(`[Detection POST] Video ${videoId} is already being processed`);
+        return NextResponse.json({
+            status: 'processing',
+            videoId: videoId,
+            message: 'Tool detection is already in progress for this video'
+        });
+    }
+
     // Require blobUrl for new detections
     if (!blobUrl) {
         return NextResponse.json({
@@ -162,6 +231,10 @@ export async function POST(request, { params }) {
             message: 'Tool detection backend not configured'
         }, { status: 503 });
     }
+
+    // Mark video as processing before calling backend
+    processingVideos.set(videoId, { startTime: Date.now() });
+    console.log(`[Detection POST] Marked ${videoId} as processing`);
 
     // Call Railway backend to start detection
     try {
@@ -188,6 +261,7 @@ export async function POST(request, { params }) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`[Detection POST] Railway backend error: ${errorText}`);
+            processingVideos.delete(videoId); // Remove from processing on error
             return NextResponse.json({
                 status: 'error',
                 videoId: videoId,
@@ -205,6 +279,7 @@ export async function POST(request, { params }) {
         });
 
     } catch (error) {
+        processingVideos.delete(videoId); // Remove from processing on error
         console.error(`[Detection POST] Error calling Railway backend:`, error);
         console.error(`[Detection POST] Error stack:`, error.stack);
         return NextResponse.json({
@@ -249,6 +324,12 @@ export async function PUT(request, { params }) {
             });
 
             console.log(`[Detection PUT] Stored in Vercel Blob: ${blob.url}`);
+
+            // Remove from processing map since it's now complete
+            if (processingVideos.has(videoId)) {
+                processingVideos.delete(videoId);
+                console.log(`[Detection PUT] Removed ${videoId} from processing map`);
+            }
 
             return NextResponse.json({
                 status: 'completed',

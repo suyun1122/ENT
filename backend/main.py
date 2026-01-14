@@ -91,7 +91,10 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
     processing_status[video_id] = {
         "status": "processing",
         "progress": 0,
-        "stage": "starting"
+        "stage": "queued",
+        "current_frame": 0,
+        "total_frames": 0,
+        "processed_frames": 0
     }
 
     # Run detection in background
@@ -115,8 +118,11 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
     try:
         processing_status[video_id] = {
             "status": "processing",
-            "progress": 10,
-            "stage": "downloading"
+            "progress": 5,
+            "stage": "downloading",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
         }
 
         # Download video from blob
@@ -134,8 +140,11 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
 
         processing_status[video_id] = {
             "status": "processing",
-            "progress": 30,
-            "stage": "analyzing"
+            "progress": 15,
+            "stage": "loading_model",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
         }
 
         # Run inference
@@ -143,8 +152,11 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
 
         processing_status[video_id] = {
             "status": "processing",
-            "progress": 90,
-            "stage": "uploading"
+            "progress": 95,
+            "stage": "uploading",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
         }
 
         # Upload results to Vercel Blob
@@ -202,6 +214,16 @@ def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
     duration = total_frames / fps if fps > 0 else 0
 
     print(f"[Inference] Video: {width}x{height}, {fps} FPS, {total_frames} frames")
+
+    # Update status with total frames info
+    processing_status[video_id] = {
+        "status": "processing",
+        "progress": 20,
+        "stage": "analyzing",
+        "current_frame": 0,
+        "total_frames": total_frames,
+        "processed_frames": 0
+    }
 
     results_data = {
         "video_id": video_id,
@@ -280,13 +302,16 @@ def run_inference(video_path: str, video_id: str, frame_skip: int = 120):
                 if processed_frames % 20 == 0:
                     print(f"[Inference] Processed {processed_frames} frames (frame {frame_idx}/{total_frames})")
 
-                # Update progress
-                if processed_frames % 50 == 0:
+                # Update progress every 10 processed frames with actual frame counts
+                if processed_frames % 10 == 0:
                     progress = 30 + int((frame_idx / total_frames) * 60)
                     processing_status[video_id] = {
                         "status": "processing",
                         "progress": min(progress, 89),
-                        "stage": "analyzing"
+                        "stage": "analyzing",
+                        "current_frame": frame_idx,
+                        "total_frames": total_frames,
+                        "processed_frames": processed_frames
                     }
 
             frame_idx += 1
