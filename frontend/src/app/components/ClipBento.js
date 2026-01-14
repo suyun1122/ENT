@@ -59,13 +59,25 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   const [toolDetectionStage, setToolDetectionStage] = useState('initializing');
   const [activeTab, setActiveTab] = useState('tool'); // 'tool', 'timeline', 'soap'
 
+  // Ref to control polling lifecycle
+  const pollingRef = React.useRef({ active: false, timeoutId: null });
+
   // Auto-load tool detection when videoId is available
   useEffect(() => {
+    // Stop any existing polling before starting new one
+    pollingRef.current.active = false;
+    if (pollingRef.current.timeoutId) {
+      clearTimeout(pollingRef.current.timeoutId);
+      pollingRef.current.timeoutId = null;
+    }
+
     const loadToolDetection = async () => {
       if (!videoId) return;
 
       setIsLoadingToolDetection(true);
       setToolDetectionError(null);
+      setToolDetectionProgress(0);
+      setToolDetectionStage('initializing');
 
       try {
         // 1. First, try to load from static files (pre-deployed detections)
@@ -104,7 +116,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           console.log("[Tool Detection] Processing started:", startData);
 
           // Poll for results
-          pollToolDetection(videoId);
+          startPolling(videoId);
         } else if (data.status === "processing") {
           console.log("[Tool Detection] Already processing, polling...");
           setIsLoadingToolDetection(true);
@@ -125,7 +137,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             setToolDetectionStage(stageNames[stage] || stage);
           }
 
-          pollToolDetection(videoId);
+          startPolling(videoId);
         }
       } catch (error) {
         console.error("[Tool Detection] Error loading:", error);
@@ -135,20 +147,47 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     };
 
     loadToolDetection();
+
+    // Cleanup: stop polling when component unmounts or videoId changes
+    return () => {
+      console.log('[Tool Detection] Cleaning up polling...');
+      pollingRef.current.active = false;
+      if (pollingRef.current.timeoutId) {
+        clearTimeout(pollingRef.current.timeoutId);
+        pollingRef.current.timeoutId = null;
+      }
+    };
   }, [videoId]);
 
-  // Poll for tool detection results
-  const pollToolDetection = async (videoId) => {
+  // Start polling for tool detection results
+  const startPolling = (videoId) => {
     const maxAttempts = 60; // 5 minutes (5s interval)
     let attempts = 0;
 
+    // Mark polling as active
+    pollingRef.current.active = true;
+    console.log(`[Tool Detection] Starting polling for ${videoId}`);
+
     const poll = async () => {
+      // Check if polling was cancelled
+      if (!pollingRef.current.active) {
+        console.log('[Tool Detection] Polling cancelled');
+        return;
+      }
+
       try {
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
 
+        // Check again after fetch (component might have unmounted)
+        if (!pollingRef.current.active) {
+          console.log('[Tool Detection] Polling cancelled after fetch');
+          return;
+        }
+
         if (data.status === "completed") {
           console.log("[Tool Detection] Processing complete!");
+          pollingRef.current.active = false;
           setToolDetectionData(data.data);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');
@@ -156,6 +195,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           return;
         } else if (data.status === "error") {
           console.error("[Tool Detection] Processing error:", data.error);
+          pollingRef.current.active = false;
           setToolDetectionError(data.error);
           setIsLoadingToolDetection(false);
           return;
@@ -200,14 +240,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         }
 
         attempts++;
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 5000); // Poll every 5 seconds
-        } else {
+        if (attempts < maxAttempts && pollingRef.current.active) {
+          pollingRef.current.timeoutId = setTimeout(poll, 5000); // Poll every 5 seconds
+        } else if (attempts >= maxAttempts) {
+          pollingRef.current.active = false;
           setToolDetectionError("Processing timeout - please try again later");
           setIsLoadingToolDetection(false);
         }
       } catch (error) {
         console.error("[Tool Detection] Poll error:", error);
+        pollingRef.current.active = false;
         setToolDetectionError(error.message);
         setIsLoadingToolDetection(false);
       }
