@@ -143,14 +143,18 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   };
 
   // Filter and sort clips based on current state
-  const filterAndSortClips = async (clips) => {
+  // query parameter allows overriding the searchQuery state (useful for clear operations)
+  const filterAndSortClips = async (clips, query = null) => {
     // Convert object to array if needed
     const clipsArray = Array.isArray(clips) ? clips : Object.values(clips);
     let filteredClips = [...clipsArray];
 
+    // Use provided query or fall back to state
+    const effectiveQuery = query !== null ? query : searchQuery;
+
     // Apply search filter
-    if (searchQuery.trim()) {
-      filteredClips = await performSemanticSearch(searchQuery, clipsArray);
+    if (effectiveQuery.trim()) {
+      filteredClips = await performSemanticSearch(effectiveQuery, clipsArray);
     }
 
     // Apply sorting
@@ -217,8 +221,9 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     setHasSearchResults(false);
     setSortBy('date'); // Reset to date sorting when clearing search
     // Reset to original clip data without search
+    // Pass empty string explicitly to avoid stale state issue
     if (onFilterChange) {
-      const filteredClips = await filterAndSortClips(clipData);
+      const filteredClips = await filterAndSortClips(clipData, '');
       onFilterChange(filteredClips, false); // false = not a search
     }
   };
