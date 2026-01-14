@@ -18,6 +18,7 @@ import ClipChat from "./ClipChat";
 import { ToolFilterPanel } from "./ToolDetectionOverlay";
 import ToolUsageTimeline from "./ToolUsageTimeline";
 import ToolUsageStatistics from "./ToolUsageStatistics";
+import { jsPDF } from "jspdf";
 
 // Optional default geolocation (configure via NEXT_PUBLIC_DEFAULT_LAT/LON)
 const DEFAULT_LAT = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_LAT || "");
@@ -557,28 +558,45 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     const exportToPDF = () => {
         if (!operatingNote?.SOAP) return;
 
-        const content = `SOAP Note
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 20;
+        const maxWidth = pageWidth - margin * 2;
+        let y = 20;
 
-SUBJECTIVE
-${operatingNote.SOAP.Subjective}
+        doc.setFontSize(18);
+        doc.setFont("helvetica", "bold");
+        doc.text("SOAP Note", pageWidth / 2, y, { align: "center" });
+        y += 15;
 
-OBJECTIVE
-${operatingNote.SOAP.Objective}
+        const sections = [
+            { title: "SUBJECTIVE", content: operatingNote.SOAP.Subjective },
+            { title: "OBJECTIVE", content: operatingNote.SOAP.Objective },
+            { title: "ASSESSMENT", content: operatingNote.SOAP.Assessment },
+            { title: "PLAN", content: operatingNote.SOAP.Plan },
+        ];
 
-ASSESSMENT
-${operatingNote.SOAP.Assessment}
+        sections.forEach((section) => {
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.text(section.title, margin, y);
+            y += 7;
 
-PLAN
-${operatingNote.SOAP.Plan}
-`;
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            const lines = doc.splitTextToSize(section.content || "", maxWidth);
+            lines.forEach((line) => {
+                if (y > 280) {
+                    doc.addPage();
+                    y = 20;
+                }
+                doc.text(line, margin, y);
+                y += 5;
+            });
+            y += 10;
+        });
 
-        const element = document.createElement("a");
-        const file = new Blob([content], { type: "text/plain" });
-        element.href = URL.createObjectURL(file);
-        element.download = `soap-note-${new Date().toISOString().split("T")[0]}.txt`;
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
+        doc.save(`soap-note-${new Date().toISOString().split("T")[0]}.pdf`);
     };
 
     // Export SOAP note to CSV
