@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 
 /**
  * ToolUsageTimeline Component
  *
- * Displays a horizontal timeline showing tool detections over time
+ * Displays a horizontal timeline showing tool detections as segments/bars
  */
 export default function ToolUsageTimeline({ detectionData, videoDuration, onSeekTo }) {
   const timelineRef = useRef(null);
@@ -21,6 +21,57 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
     'Irrigator': '#F38181',    // Pink
     'Scissors': '#AA96DA',     // Purple
     'Specimen Bag': '#FCBAD3'  // Light Pink
+  };
+
+  // Merge consecutive detections into segments
+  const mergeIntoSegments = (detections, gapThreshold = 3) => {
+    if (!detections || detections.length === 0) return [];
+
+    // Sort by timestamp
+    const sorted = [...detections].sort((a, b) => a.timestamp - b.timestamp);
+    const segments = [];
+
+    let currentSegment = {
+      start: sorted[0].timestamp,
+      end: sorted[0].timestamp,
+      avgConfidence: sorted[0].confidence,
+      count: 1
+    };
+
+    for (let i = 1; i < sorted.length; i++) {
+      const detection = sorted[i];
+      const gap = detection.timestamp - currentSegment.end;
+
+      if (gap <= gapThreshold) {
+        // Extend current segment
+        currentSegment.end = detection.timestamp;
+        currentSegment.avgConfidence =
+          (currentSegment.avgConfidence * currentSegment.count + detection.confidence) /
+          (currentSegment.count + 1);
+        currentSegment.count++;
+      } else {
+        // Save current segment and start new one
+        // Add minimum duration for visibility
+        if (currentSegment.end - currentSegment.start < 1) {
+          currentSegment.end = currentSegment.start + 1;
+        }
+        segments.push(currentSegment);
+        currentSegment = {
+          start: detection.timestamp,
+          end: detection.timestamp,
+          avgConfidence: detection.confidence,
+          count: 1
+        };
+      }
+    }
+
+    // Don't forget the last segment
+    if (currentSegment.end - currentSegment.start < 1) {
+      currentSegment.end = currentSegment.start + 1;
+    }
+    segments.push(currentSegment);
+
+    return segments;
   };
 
   if (!detectionData || !detectionData.detections || !videoDuration) {
@@ -49,6 +100,12 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
         });
       }
     });
+  });
+
+  // Convert to segments for each tool
+  const toolSegments = {};
+  toolNames.forEach(toolName => {
+    toolSegments[toolName] = mergeIntoSegments(toolTimelines[toolName]);
   });
 
   // Format time for display
@@ -110,15 +167,15 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
               Surgical Tools
             </div>
             {toolNames.map((toolName) => {
-              const detections = toolTimelines[toolName] || [];
+              const segments = toolSegments[toolName] || [];
               const color = TOOL_COLORS[toolName] || '#CCCCCC';
 
-              if (detections.length === 0) return null;
+              if (segments.length === 0) return null;
 
               return (
-                <div key={toolName} className="flex items-center h-6">
+                <div key={toolName} className="flex items-center h-8">
                   <div
-                    className="w-3 h-3 rounded-sm mr-2 flex-shrink-0"
+                    className="w-4 h-4 rounded mr-2 flex-shrink-0"
                     style={{ backgroundColor: color }}
                   ></div>
                   <span className="text-sm font-medium text-gray-700 truncate" title={toolName}>
@@ -176,40 +233,43 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
             {/* Tool lines */}
             <div className="space-y-3">
               {toolNames.map((toolName) => {
-                const detections = toolTimelines[toolName] || [];
+                const segments = toolSegments[toolName] || [];
                 const color = TOOL_COLORS[toolName] || '#CCCCCC';
 
-                if (detections.length === 0) return null;
+                if (segments.length === 0) return null;
 
                 return (
-                  <div key={toolName} className="relative h-6">
+                  <div key={toolName} className="relative h-8">
                     {/* Timeline background line */}
                     <div
-                      className="absolute top-1/2 left-0 h-1 transform -translate-y-1/2 rounded-full"
+                      className="absolute top-1/2 left-0 h-2 transform -translate-y-1/2 rounded-full"
                       style={{
                         width: `${videoDuration * pixelsPerSecond}px`,
                         backgroundColor: '#F3F4F6'
                       }}
                     ></div>
 
-                    {/* Detection markers */}
-                    {detections.map((detection, detIndex) => (
-                      <div
-                        key={detIndex}
-                        onClick={() => handleTimelineClick(detection.timestamp)}
-                        className="absolute top-1/2 transform -translate-y-1/2 cursor-pointer hover:scale-150 transition-transform duration-150 hover:z-20"
-                        style={{
-                          left: `${detection.timestamp * pixelsPerSecond}px`,
-                          width: '10px',
-                          height: '10px',
-                          backgroundColor: color,
-                          borderRadius: '50%',
-                          border: '2px solid white',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                        }}
-                        title={`${toolName} at ${formatTime(detection.timestamp)} (${(detection.confidence * 100).toFixed(1)}% confidence)`}
-                      />
-                    ))}
+                    {/* Segment bars */}
+                    {segments.map((segment, segIndex) => {
+                      const segmentWidth = Math.max((segment.end - segment.start) * pixelsPerSecond, 8);
+                      return (
+                        <div
+                          key={segIndex}
+                          onClick={() => handleTimelineClick(segment.start)}
+                          className="absolute top-1/2 transform -translate-y-1/2 cursor-pointer hover:brightness-110 transition-all duration-150 hover:z-20"
+                          style={{
+                            left: `${segment.start * pixelsPerSecond}px`,
+                            width: `${segmentWidth}px`,
+                            height: '20px',
+                            backgroundColor: color,
+                            borderRadius: '4px',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                            opacity: 0.7 + segment.avgConfidence * 0.3
+                          }}
+                          title={`${toolName}: ${formatTime(segment.start)} - ${formatTime(segment.end)} (${segment.count} detections, avg ${(segment.avgConfidence * 100).toFixed(0)}% confidence)`}
+                        />
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -221,7 +281,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
       {/* Legend */}
       <div className="mt-4 pt-4 border-t border-gray-200">
         <p className="text-xs text-gray-500 italic">
-          💡 Click on any marker to jump to that moment in the video. Use zoom controls to adjust the timeline scale.
+          💡 Click on any bar to jump to that segment in the video. Hover for details. Use zoom controls to adjust the timeline scale.
         </p>
       </div>
     </div>
