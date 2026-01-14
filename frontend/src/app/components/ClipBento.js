@@ -62,13 +62,15 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   // Ref to control polling lifecycle
   const pollingRef = React.useRef({ active: false, timeoutId: null });
 
-  // Ref to track if detection data is loaded (avoids duplicate requests)
+  // Ref to track if detection is loaded or started (avoids duplicate requests)
   const detectionLoadedRef = React.useRef(false);
+  const detectionStartedRef = React.useRef(false);
 
   // Auto-load tool detection when videoId is available
   useEffect(() => {
     // Reset state for new videoId
     detectionLoadedRef.current = false;
+    detectionStartedRef.current = false;
 
     // Stop any existing polling before starting new one
     pollingRef.current.active = false;
@@ -80,11 +82,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     const loadToolDetection = async () => {
       if (!videoId) return;
 
-      // Skip if we already have detection data loaded
-      if (detectionLoadedRef.current) {
-        console.log('[Tool Detection] Already loaded, skipping');
+      // Skip if we already have detection data loaded or started
+      if (detectionLoadedRef.current || detectionStartedRef.current) {
+        console.log('[Tool Detection] Already loaded or started, skipping');
         return;
       }
+
+      // Mark as started immediately to prevent duplicate requests
+      detectionStartedRef.current = true;
 
       setIsLoadingToolDetection(true);
       setToolDetectionError(null);
@@ -174,11 +179,13 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               console.log("[Tool Detection] Could not start processing:", startData.message);
               setToolDetectionError(startData.message || "Could not start tool detection");
               setIsLoadingToolDetection(false);
+              detectionStartedRef.current = false; // Allow retry on error
             }
           } else {
             console.log("[Tool Detection] No video URL available for processing");
             setToolDetectionError("Video URL not available for tool detection");
             setIsLoadingToolDetection(false);
+            detectionStartedRef.current = false; // Allow retry on error
           }
         } else if (data.status === "processing") {
           console.log("[Tool Detection] Already processing, polling...");
@@ -211,6 +218,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         console.error("[Tool Detection] Error loading:", error);
         setToolDetectionError(error.message);
         setIsLoadingToolDetection(false);
+        detectionStartedRef.current = false; // Allow retry on error
       }
     };
 
