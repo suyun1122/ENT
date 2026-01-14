@@ -62,8 +62,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   // Ref to control polling lifecycle
   const pollingRef = React.useRef({ active: false, timeoutId: null });
 
+  // Ref to track if detection data is loaded (avoids duplicate requests)
+  const detectionLoadedRef = React.useRef(false);
+
   // Auto-load tool detection when videoId is available
   useEffect(() => {
+    // Reset state for new videoId
+    detectionLoadedRef.current = false;
+
     // Stop any existing polling before starting new one
     pollingRef.current.active = false;
     if (pollingRef.current.timeoutId) {
@@ -73,6 +79,12 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
     const loadToolDetection = async () => {
       if (!videoId) return;
+
+      // Skip if we already have detection data loaded
+      if (detectionLoadedRef.current) {
+        console.log('[Tool Detection] Already loaded, skipping');
+        return;
+      }
 
       setIsLoadingToolDetection(true);
       setToolDetectionError(null);
@@ -87,6 +99,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         if (staticResponse.ok) {
           console.log('[Tool Detection] Loaded from static file');
           const staticData = await staticResponse.json();
+          detectionLoadedRef.current = true;
           setToolDetectionData(staticData);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');
@@ -101,22 +114,72 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
         if (data.status === "completed") {
           console.log('[Tool Detection] Loaded from API/Blob');
+          detectionLoadedRef.current = true;
           setToolDetectionData(data.data);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');
           setIsLoadingToolDetection(false);
         } else if (data.status === "not_found") {
-          console.log('[Tool Detection] No results found, starting processing...');
+          console.log('[Tool Detection] No results found, checking if we can start processing...');
           setIsLoadingToolDetection(true);
-          // Start processing in background
-          const startResponse = await fetch(`/api/detect-tools/${videoId}`, {
-            method: "POST",
-          });
-          const startData = await startResponse.json();
-          console.log("[Tool Detection] Processing started:", startData);
 
-          // Poll for results
-          startPolling(videoId);
+          // Try to get blob URL from mapping first (saved during upload)
+          let videoUrl = null;
+          try {
+            const mappingResponse = await fetch(`/api/video-urls/${videoId}`);
+            const mappingData = await mappingResponse.json();
+            if (mappingData.status === 'found' && mappingData.blobUrl) {
+              console.log('[Tool Detection] Found blob URL from mapping:', mappingData.blobUrl);
+              videoUrl = mappingData.blobUrl;
+            }
+          } catch (e) {
+            console.log('[Tool Detection] Could not fetch blob URL mapping:', e.message);
+          }
+
+          // Fallback to HLS URL (may not work for tool detection)
+          if (!videoUrl) {
+            videoUrl = clipData?.hls?.video_url || clipData?.source_url;
+            if (videoUrl) {
+              console.log('[Tool Detection] Using HLS URL as fallback (may not work)');
+            }
+          }
+
+          if (videoUrl) {
+            // Start processing in background with video URL
+            const startResponse = await fetch(`/api/detect-tools/${videoId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ blobUrl: videoUrl }),
+            });
+            const startData = await startResponse.json();
+            console.log("[Tool Detection] Processing started:", startData);
+
+            // Handle different responses
+            if (startData.status === "started" || startData.status === "processing") {
+              // Processing started or already in progress - poll for results
+              startPolling(videoId);
+            } else if (startData.status === "completed") {
+              // Already completed - fetch the results
+              console.log("[Tool Detection] Already completed, fetching results...");
+              const resultsResponse = await fetch(`/api/detect-tools/${videoId}`);
+              const resultsData = await resultsResponse.json();
+              if (resultsData.status === "completed" && resultsData.data) {
+                detectionLoadedRef.current = true;
+                setToolDetectionData(resultsData.data);
+                setToolDetectionProgress(100);
+                setToolDetectionStage('completed');
+              }
+              setIsLoadingToolDetection(false);
+            } else {
+              console.log("[Tool Detection] Could not start processing:", startData.message);
+              setToolDetectionError(startData.message || "Could not start tool detection");
+              setIsLoadingToolDetection(false);
+            }
+          } else {
+            console.log("[Tool Detection] No video URL available for processing");
+            setToolDetectionError("Video URL not available for tool detection");
+            setIsLoadingToolDetection(false);
+          }
         } else if (data.status === "processing") {
           console.log("[Tool Detection] Already processing, polling...");
           setIsLoadingToolDetection(true);
@@ -179,6 +242,9 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
 
+        // Log full API response for debugging
+        console.log('[Tool Detection] API response:', data);
+
         // Check again after fetch (component might have unmounted)
         if (!pollingRef.current.active) {
           console.log('[Tool Detection] Polling cancelled after fetch');
@@ -188,6 +254,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         if (data.status === "completed") {
           console.log("[Tool Detection] Processing complete!");
           pollingRef.current.active = false;
+          detectionLoadedRef.current = true;
           setToolDetectionData(data.data);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');

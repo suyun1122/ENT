@@ -142,6 +142,18 @@ export default function UploadVideo() {
             // Indexing complete - tool detection was triggered by the server
             console.log('[Indexing Status] Video ready! Tool detection triggered:', data.toolDetectionTriggered);
 
+            // Save blob URL mapping for future use (tool detection when returning to page)
+            try {
+              await fetch(`/api/video-urls/${data.videoId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blobUrl }),
+              });
+              console.log('[Indexing Status] Blob URL mapping saved for', data.videoId);
+            } catch (mappingError) {
+              console.warn('[Indexing Status] Failed to save blob URL mapping:', mappingError);
+            }
+
             // Start background polling for detection completion, then cleanup
             if (data.toolDetectionTriggered) {
               console.log('[Indexing Status] Starting background detection monitoring...');

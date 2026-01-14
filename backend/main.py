@@ -79,13 +79,45 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
 
     video_id = request.video_id
 
-    # Check if already processing
+    # Check if already processing in memory
     if video_id in processing_status and processing_status[video_id].get("status") == "processing":
         return DetectionResponse(
             status="processing",
             video_id=video_id,
             message="Detection already in progress"
         )
+
+    # Check if results already exist in Blob (via frontend API)
+    frontend_url = os.environ.get("FRONTEND_URL", "https://surgical-tool-detection.vercel.app")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            check_response = await client.get(f"{frontend_url}/api/detect-tools/{video_id}")
+            if check_response.status_code == 200:
+                check_data = check_response.json()
+                if check_data.get("status") == "completed":
+                    print(f"[Detection] Results already exist in Blob for {video_id}")
+                    # Store in local cache too
+                    processing_status[video_id] = {
+                        "status": "completed",
+                        "progress": 100,
+                        "stage": "done",
+                        "data": check_data.get("data")
+                    }
+                    return DetectionResponse(
+                        status="completed",
+                        video_id=video_id,
+                        message="Detection already completed"
+                    )
+                elif check_data.get("status") == "processing":
+                    print(f"[Detection] Already processing according to frontend for {video_id}")
+                    return DetectionResponse(
+                        status="processing",
+                        video_id=video_id,
+                        message="Detection already in progress"
+                    )
+    except Exception as e:
+        print(f"[Detection] Could not check existing results: {e}")
+        # Continue with processing if check fails
 
     # Initialize status
     processing_status[video_id] = {

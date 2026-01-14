@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { list, put } from '@vercel/blob';
+import { list, put, del } from '@vercel/blob';
 
 // Railway backend URL for tool detection
 const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
 
-// In-memory tracking of videos currently being processed
-// Key: videoId, Value: { startTime: Date, status: 'processing' }
+// In-memory tracking of videos currently being processed (fallback only)
 const processingVideos = new Map();
 
 // Cleanup old processing entries (older than 10 minutes)
@@ -19,6 +18,58 @@ function cleanupStaleProcessing() {
             console.log(`[Detection] Cleaning up stale processing entry: ${videoId}`);
             processingVideos.delete(videoId);
         }
+    }
+}
+
+// Check if processing status exists in Blob
+async function checkProcessingStatus(videoId) {
+    try {
+        const { blobs } = await list({
+            prefix: `processing-status/${videoId}`,
+            token: process.env.BLOB_READ_WRITE_TOKEN
+        });
+        if (blobs.length > 0) {
+            const response = await fetch(blobs[0].url);
+            return await response.json();
+        }
+    } catch (e) {
+        console.log(`[Detection] Could not check processing status: ${e.message}`);
+    }
+    return null;
+}
+
+// Set processing status in Blob
+async function setProcessingStatus(videoId, status) {
+    try {
+        const statusData = {
+            videoId,
+            status,
+            startTime: new Date().toISOString()
+        };
+        await put(`processing-status/${videoId}.json`, JSON.stringify(statusData), {
+            access: 'public',
+            token: process.env.BLOB_READ_WRITE_TOKEN,
+            contentType: 'application/json',
+        });
+        console.log(`[Detection] Set processing status for ${videoId}: ${status}`);
+    } catch (e) {
+        console.log(`[Detection] Could not set processing status: ${e.message}`);
+    }
+}
+
+// Clear processing status from Blob
+async function clearProcessingStatus(videoId) {
+    try {
+        const { blobs } = await list({
+            prefix: `processing-status/${videoId}`,
+            token: process.env.BLOB_READ_WRITE_TOKEN
+        });
+        for (const blob of blobs) {
+            await del(blob.url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+        }
+        console.log(`[Detection] Cleared processing status for ${videoId}`);
+    } catch (e) {
+        console.log(`[Detection] Could not clear processing status: ${e.message}`);
     }
 }
 
@@ -89,7 +140,63 @@ export async function GET(request, { params }) {
             }
         }
 
-        // Check if video is currently being processed
+        // Check persistent processing status in Blob
+        const persistentStatus = await checkProcessingStatus(videoId);
+        if (persistentStatus && persistentStatus.status === 'processing') {
+            const startTime = new Date(persistentStatus.startTime).getTime();
+            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+            // Check if processing has been running too long (> 15 minutes = likely failed)
+            if (elapsedSeconds > 900) {
+                console.log(`[Detection GET] Processing status stale (${elapsedSeconds}s), clearing...`);
+                await clearProcessingStatus(videoId);
+            } else {
+                console.log(`[Detection GET] Found persistent processing status for ${videoId} (${elapsedSeconds}s elapsed)`);
+
+                // Try to get actual progress from Railway backend
+                if (TOOL_DETECTION_BACKEND_URL) {
+                    try {
+                        const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
+                        if (statusResponse.ok) {
+                            const railwayStatus = await statusResponse.json();
+                            if (railwayStatus.status === 'processing') {
+                                return NextResponse.json({
+                                    status: 'processing',
+                                    videoId: videoId,
+                                    progress: railwayStatus.progress || 0,
+                                    stage: railwayStatus.stage || 'processing',
+                                    currentFrame: railwayStatus.current_frame || 0,
+                                    totalFrames: railwayStatus.total_frames || 0,
+                                    processedFrames: railwayStatus.processed_frames || 0,
+                                    elapsedSeconds: elapsedSeconds,
+                                    message: 'Tool detection is currently in progress'
+                                });
+                            } else if (railwayStatus.status === 'completed' && railwayStatus.data) {
+                                // Railway completed, clear processing status
+                                await clearProcessingStatus(videoId);
+                                return NextResponse.json({
+                                    status: 'completed',
+                                    videoId: videoId,
+                                    data: railwayStatus.data
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
+                    }
+                }
+
+                // Return processing status even without Railway details
+                return NextResponse.json({
+                    status: 'processing',
+                    videoId: videoId,
+                    elapsedSeconds: elapsedSeconds,
+                    message: 'Tool detection is currently in progress'
+                });
+            }
+        }
+
+        // Check in-memory processing status (fallback)
         cleanupStaleProcessing();
         if (processingVideos.has(videoId)) {
             const processingInfo = processingVideos.get(videoId);
@@ -219,6 +326,8 @@ export async function POST(request, { params }) {
 
         if (blobs.length > 0) {
             console.log(`[Detection] Already exists in Blob: ${videoId}`);
+            // Clear any stale processing status
+            await clearProcessingStatus(videoId);
             return NextResponse.json({
                 status: 'completed',
                 videoId: videoId,
@@ -227,6 +336,27 @@ export async function POST(request, { params }) {
         }
     } catch (blobError) {
         // Continue if not found in Blob
+    }
+
+    // Check persistent processing status - prevent duplicate processing
+    const persistentStatus = await checkProcessingStatus(videoId);
+    if (persistentStatus && persistentStatus.status === 'processing') {
+        const startTime = new Date(persistentStatus.startTime).getTime();
+        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+        // Only consider stale if > 15 minutes
+        if (elapsedSeconds <= 900) {
+            console.log(`[Detection POST] Already processing (persistent status): ${videoId}`);
+            return NextResponse.json({
+                status: 'processing',
+                videoId: videoId,
+                message: 'Tool detection is already in progress'
+            });
+        } else {
+            // Stale status, clear it
+            console.log(`[Detection POST] Clearing stale processing status: ${videoId}`);
+            await clearProcessingStatus(videoId);
+        }
     }
 
     // Check local file system (development only)
@@ -270,9 +400,10 @@ export async function POST(request, { params }) {
         }, { status: 503 });
     }
 
-    // Mark video as processing before calling backend
+    // Mark video as processing (both in-memory and persistent)
     processingVideos.set(videoId, { startTime: Date.now() });
-    console.log(`[Detection POST] Marked ${videoId} as processing`);
+    await setProcessingStatus(videoId, 'processing');
+    console.log(`[Detection POST] Marked ${videoId} as processing (persistent)`);
 
     // Call Railway backend to start detection
     try {
@@ -299,7 +430,8 @@ export async function POST(request, { params }) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`[Detection POST] Railway backend error: ${errorText}`);
-            processingVideos.delete(videoId); // Remove from processing on error
+            processingVideos.delete(videoId);
+            await clearProcessingStatus(videoId); // Clear persistent status on error
             return NextResponse.json({
                 status: 'error',
                 videoId: videoId,
@@ -317,7 +449,8 @@ export async function POST(request, { params }) {
         });
 
     } catch (error) {
-        processingVideos.delete(videoId); // Remove from processing on error
+        processingVideos.delete(videoId);
+        await clearProcessingStatus(videoId); // Clear persistent status on error
         console.error(`[Detection POST] Error calling Railway backend:`, error);
         console.error(`[Detection POST] Error stack:`, error.stack);
         return NextResponse.json({
@@ -363,11 +496,12 @@ export async function PUT(request, { params }) {
 
             console.log(`[Detection PUT] Stored in Vercel Blob: ${blob.url}`);
 
-            // Remove from processing map since it's now complete
+            // Remove from processing (both in-memory and persistent)
             if (processingVideos.has(videoId)) {
                 processingVideos.delete(videoId);
-                console.log(`[Detection PUT] Removed ${videoId} from processing map`);
             }
+            await clearProcessingStatus(videoId);
+            console.log(`[Detection PUT] Cleared processing status for ${videoId}`);
 
             return NextResponse.json({
                 status: 'completed',
