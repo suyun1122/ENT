@@ -88,6 +88,7 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
         )
 
     # Check if results already exist in Blob (via frontend API)
+    # Only check for "completed" status - ignore "processing" to avoid circular dependency
     frontend_url = os.environ.get("FRONTEND_URL", "https://surgical-tool-detection.vercel.app")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -108,13 +109,8 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
                         video_id=video_id,
                         message="Detection already completed"
                     )
-                elif check_data.get("status") == "processing":
-                    print(f"[Detection] Already processing according to frontend for {video_id}")
-                    return DetectionResponse(
-                        status="processing",
-                        video_id=video_id,
-                        message="Detection already in progress"
-                    )
+                # Note: We don't check for "processing" here anymore
+                # The frontend's processing-status was causing a circular dependency
     except Exception as e:
         print(f"[Detection] Could not check existing results: {e}")
         # Continue with processing if check fails
