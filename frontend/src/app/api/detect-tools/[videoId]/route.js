@@ -153,40 +153,7 @@ export async function GET(request, { params }) {
             } else {
                 console.log(`[Detection GET] Found persistent processing status for ${videoId} (${elapsedSeconds}s elapsed)`);
 
-                // Try to get actual progress from Railway backend
-                if (TOOL_DETECTION_BACKEND_URL) {
-                    try {
-                        const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
-                        if (statusResponse.ok) {
-                            const railwayStatus = await statusResponse.json();
-                            if (railwayStatus.status === 'processing') {
-                                return NextResponse.json({
-                                    status: 'processing',
-                                    videoId: videoId,
-                                    progress: railwayStatus.progress || 0,
-                                    stage: railwayStatus.stage || 'processing',
-                                    currentFrame: railwayStatus.current_frame || 0,
-                                    totalFrames: railwayStatus.total_frames || 0,
-                                    processedFrames: railwayStatus.processed_frames || 0,
-                                    elapsedSeconds: elapsedSeconds,
-                                    message: 'Tool detection is currently in progress'
-                                });
-                            } else if (railwayStatus.status === 'completed' && railwayStatus.data) {
-                                // Railway completed, clear processing status
-                                await clearProcessingStatus(videoId);
-                                return NextResponse.json({
-                                    status: 'completed',
-                                    videoId: videoId,
-                                    data: railwayStatus.data
-                                });
-                            }
-                        }
-                    } catch (e) {
-                        console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
-                    }
-                }
-
-                // Return processing status even without Railway details
+                // Return processing status with elapsed time (frontend calculates estimated progress)
                 return NextResponse.json({
                     status: 'processing',
                     videoId: videoId,
@@ -203,77 +170,13 @@ export async function GET(request, { params }) {
             const elapsedSeconds = Math.floor((Date.now() - processingInfo.startTime) / 1000);
             console.log(`[Detection GET] Video ${videoId} is currently processing (${elapsedSeconds}s elapsed)`);
 
-            // Try to get actual progress from Railway backend
-            if (TOOL_DETECTION_BACKEND_URL) {
-                try {
-                    const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
-                    if (statusResponse.ok) {
-                        const railwayStatus = await statusResponse.json();
-                        if (railwayStatus.status === 'processing' || railwayStatus.status === 'completed') {
-                            console.log(`[Detection GET] Railway status for ${videoId}:`, railwayStatus);
-                            return NextResponse.json({
-                                status: railwayStatus.status,
-                                videoId: videoId,
-                                progress: railwayStatus.progress || 0,
-                                stage: railwayStatus.stage || 'processing',
-                                currentFrame: railwayStatus.current_frame || 0,
-                                totalFrames: railwayStatus.total_frames || 0,
-                                processedFrames: railwayStatus.processed_frames || 0,
-                                elapsedSeconds: elapsedSeconds,
-                                message: 'Tool detection is currently in progress'
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
-                }
-            }
-
-            // Fallback to basic processing status
+            // Return processing status with elapsed time
             return NextResponse.json({
                 status: 'processing',
                 videoId: videoId,
                 elapsedSeconds: elapsedSeconds,
                 message: 'Tool detection is currently in progress'
             });
-        }
-
-        // Before returning not_found, check Railway backend status
-        // (handles case where processingVideos Map was cleared but Railway is still processing)
-        if (TOOL_DETECTION_BACKEND_URL) {
-            try {
-                console.log(`[Detection GET] Checking Railway status for ${videoId}...`);
-                const statusResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`);
-                if (statusResponse.ok) {
-                    const railwayStatus = await statusResponse.json();
-                    console.log(`[Detection GET] Railway status:`, railwayStatus);
-
-                    if (railwayStatus.status === 'processing') {
-                        // Railway is still processing - add to local map and return status
-                        processingVideos.set(videoId, { startTime: Date.now() });
-                        return NextResponse.json({
-                            status: 'processing',
-                            videoId: videoId,
-                            progress: railwayStatus.progress || 0,
-                            stage: railwayStatus.stage || 'processing',
-                            currentFrame: railwayStatus.current_frame || 0,
-                            totalFrames: railwayStatus.total_frames || 0,
-                            processedFrames: railwayStatus.processed_frames || 0,
-                            message: 'Tool detection is currently in progress'
-                        });
-                    } else if (railwayStatus.status === 'completed' && railwayStatus.data) {
-                        // Railway completed - return the data directly
-                        console.log(`[Detection GET] Railway has completed data, returning it`);
-                        return NextResponse.json({
-                            status: 'completed',
-                            videoId: videoId,
-                            data: railwayStatus.data
-                        });
-                    }
-                }
-            } catch (e) {
-                console.log(`[Detection GET] Could not fetch Railway status: ${e.message}`);
-            }
         }
 
         // No results found
