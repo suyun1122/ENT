@@ -283,7 +283,12 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setToolDetectionError(data.error);
           setIsLoadingToolDetection(false);
           return;
-        } else if (data.status === "processing" || data.status === "not_found") {
+        } else if (data.status === "not_found") {
+          // Not started yet - waiting for upload process to trigger detection
+          console.log(`[Tool Detection] Not found - waiting for upload to trigger detection`);
+          setToolDetectionProgress(0);
+          setToolDetectionStage('waiting for video upload to complete');
+        } else if (data.status === "processing") {
           // Use elapsed time based progress estimation
           const elapsedSeconds = data.elapsedSeconds || (attempts * 5);
           // Estimate: ~2 minutes (120s) for typical video processing
