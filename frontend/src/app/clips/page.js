@@ -133,7 +133,7 @@ export default function Clips() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--zinc-100)' }}>
       <ClipSort clipData={clipData} onFilterChange={handleFilterChange} />
 
       {/* Header Section */}

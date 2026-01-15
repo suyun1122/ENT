@@ -1,29 +1,125 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Milling";
+  font-style: normal;
+  font-weight: 400;
+  src: url("https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Duplex1mm.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Milling";
+  font-style: normal;
+  font-weight: 700;
+  src: url("https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Triplex1mm.woff2")
+    format("woff2");
+}
+
 :root {
-  --background: #ffffff;
+  --background: #f4f3f3;
   --foreground: #171717;
+
+  /* Theme colors */
+  --color-white-200: #f9f9f9;
+  --color-zinc-100: #f4f3f3;
+  --color-gray-200: #ececec;
+  --color-gray-300: #d9d9d9;
+  --color-gray-500: #bdbcbb;
+  --color-blue: #c4eefe;
+  --color-light-purple: #fbdfff;
+  --color-light-pink: #ffdfeb;
+  --color-light-green: #bff3a4;
+  --color-light-orange: #fde3a2;
+  --color-pink: #ffb0cd;
+  --color-red: #e22e22;
+  --color-generate: #fde3ae;
+  --color-green: #60e21b;
+  --color-orange: #faba17;
+  --color-confidence-high: #30710e;
+  --color-confidence-medium: #846617;
+  --color-confidence-low: #1d1c1c;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Milling", var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Zinc color palette */
+  --zinc-50: #f9faf9;
+  --zinc-100: #f4f3f3;
+  --zinc-200: #ececec;
+  --zinc-300: #d4d5d2;
+  --zinc-400: #c5c7c3;
+  --zinc-500: #b7b9b4;
+  --zinc-600: #929490;
+  --zinc-700: #6f706d;
+  --zinc-800: #585956;
+  --zinc-900: #333431;
+  --zinc-1000: #222222;
+  --zinc-1100: #171717;
+  --zinc-1200: #000000;
+
+  /* Gradients */
+  --gradient-search: linear-gradient(90deg, #F6AFFF 0%, #D9D9FF 50%, #A7ABFF 97%);
+  --gradient-brand: linear-gradient(90deg, #E9E8E7 26.47%, rgba(233, 232, 231, 0.00) 99.93%), linear-gradient(270deg, #F6AFFF -3.33%, #FFB592 6.18%, #FAB920 15.68%, #84DB1A 29.94%, #E9E8E7 79.36%);
+  --gradient-button: linear-gradient(90deg, #60E21B -113.54%, #FABA17 -44.14%, #FFB592 33.8%, #FFB0CD 100%);
+
+  /* Box shadows */
+  --shadow-card: 0 8px 18px 0 rgba(29,28,27,0.15);
+  --shadow-soft: 0 4px 12px 0 rgba(29,28,27,0.08);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: "Milling", var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-inter: var(--font-inter);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Custom colors for Tailwind */
+  --color-custom-green: var(--color-green);
+  --color-custom-red: var(--color-red);
+  --color-custom-blue: var(--color-blue);
+  --color-custom-orange: var(--color-orange);
+  --color-custom-pink: var(--color-pink);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Milling", Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--zinc-400) var(--zinc-200);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--zinc-200);
+  border-radius: 3px;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--zinc-400);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--zinc-500);
 }
 
 /* Upload indicator animation */
@@ -40,4 +136,109 @@ body {
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
+}
+
+/* Gradient backgrounds */
+.bg-search-gradient {
+  background: var(--gradient-search);
+}
+
+.bg-brand-gradient {
+  background: var(--gradient-brand);
+}
+
+.bg-button-gradient {
+  background: var(--gradient-button);
+}
+
+/* Card shadow */
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+/* Sidebar navigation styles */
+.sidebar-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s ease;
+  font-family: "Milling", sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+
+.sidebar-nav-item:hover {
+  background-color: var(--color-gray-200);
+}
+
+.sidebar-nav-item.active {
+  background-color: var(--color-gray-500);
+}
+
+/* Video card styles matching CreatorDiscovery */
+.video-card {
+  border-radius: 32px;
+  overflow: hidden;
+  position: relative;
+}
+
+.video-card-rounded {
+  border-radius: 20px;
+}
+
+/* Confidence label styles */
+.confidence-badge {
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+}
+
+.confidence-high {
+  background-color: var(--color-confidence-high);
+  border: 1px solid var(--color-light-green);
+  color: var(--color-light-green);
+}
+
+.confidence-medium {
+  background-color: var(--color-orange);
+  border: 1px solid var(--color-light-orange);
+  color: #7D5D0C;
+}
+
+.confidence-low {
+  background-color: #45423F;
+  border: 1px solid var(--zinc-200);
+  color: var(--zinc-200);
+}
+
+/* Tag styles */
+.tag-outline {
+  padding: 0.125rem 0.25rem;
+  outline: 1px solid white;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  color: white;
+  border-radius: 0.375rem;
+  font-family: "Milling", sans-serif;
+  backdrop-filter: blur(20px);
+}
+
+/* Sample app badge */
+.sample-badge {
+  display: inline-block;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #8F8984;
+  color: #8F8984;
 }

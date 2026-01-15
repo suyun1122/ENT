@@ -2,9 +2,9 @@
 
 import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
-import { 
-  PlayIcon, 
-  CalendarIcon, 
+import {
+  PlayIcon,
+  CalendarIcon,
   ClockIcon,
   EyeIcon,
   TagIcon,
@@ -106,8 +106,8 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
     const formatDate = (dateString) => {
         if (!dateString) return 'Unknown date';
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { 
-            month: 'short', 
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
@@ -121,27 +121,31 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const getCategoryColor = (category) => {
-        switch(category) {
-            case 'safety': return 'bg-red-100 text-red-800';
-            case 'defect': return 'bg-yellow-100 text-yellow-800';
-            case 'general': return 'bg-blue-100 text-blue-800';
-            default: return 'bg-gray-100 text-gray-800';
-        }
-    };
-
-    const getPriorityColor = (priority) => {
+    const getPriorityStyle = (priority) => {
         switch(priority) {
-            case 'high': return 'bg-red-500';
-            case 'medium': return 'bg-yellow-500';
-            case 'low': return 'bg-green-500';
-            default: return 'bg-gray-500';
+            case 'high': return { backgroundColor: 'var(--color-red)' };
+            case 'medium': return { backgroundColor: 'var(--color-orange)' };
+            case 'low': return { backgroundColor: 'var(--color-green)' };
+            default: return { backgroundColor: 'var(--zinc-500)' };
         }
     };
 
     const handleClick = () => {
         console.log('View clip details for:', vss_id || name);
         router.push(`/clips/${name}`); // Navigate to clip detail page
+    };
+
+    // Get confidence badge styles based on score
+    const getConfidenceBadgeClass = (score) => {
+        if (score >= 80) return 'confidence-high';
+        if (score >= 60) return 'confidence-medium';
+        return 'confidence-low';
+    };
+
+    const getConfidenceLabel = (score) => {
+        if (score >= 80) return 'HIGH';
+        if (score >= 60) return 'MEDIUM';
+        return 'LOW';
     };
 
     return (
@@ -152,45 +156,49 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
             onClick={handleClick}
         >
             {/* Video/Thumbnail Container */}
-            <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
+            <div className="relative aspect-video w-full rounded-[32px] overflow-hidden shadow-soft hover:shadow-card transition-all duration-300 transform hover:-translate-y-1"
+                 style={{ backgroundColor: 'var(--zinc-300)' }}>
                 {!hovered ? (
                     <>
                         {!imageError && thumbnail_url ? (
-                            <Image 
-                                src={thumbnail_url} 
-                                alt={name || 'Video thumbnail'} 
+                            <Image
+                                src={thumbnail_url}
+                                alt={name || 'Video thumbnail'}
                                 fill
-                                className="object-cover group-hover:scale-110 transition-transform duration-500"
+                                className="object-cover group-hover:scale-105 transition-transform duration-500"
                                 onError={() => setImageError(true)}
                             />
                         ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
-                                <PlayIcon className="h-16 w-16 text-gray-600" />
+                            <div className="w-full h-full flex items-center justify-center"
+                                 style={{ background: 'linear-gradient(135deg, var(--zinc-300), var(--zinc-400))' }}>
+                                <PlayIcon className="h-16 w-16" style={{ color: 'var(--zinc-600)' }} />
                             </div>
                         )}
-                        
+
                         {/* Play Button Overlay */}
-                        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
-                            <div className="w-20 h-20 bg-white/95 rounded-full flex items-center justify-center group-hover:bg-white group-hover:scale-125 transition-all duration-300 shadow-lg">
-                                <PlayIcon className="h-8 w-8 text-gray-700 ml-1" />
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-all duration-300 flex items-center justify-center">
+                            <div className="w-16 h-16 bg-white/95 rounded-full flex items-center justify-center group-hover:bg-white group-hover:scale-110 transition-all duration-300"
+                                 style={{ boxShadow: 'var(--shadow-card)' }}>
+                                <PlayIcon className="h-7 w-7 ml-1" style={{ color: 'var(--zinc-700)' }} />
                             </div>
                         </div>
 
                         {/* View Details Button */}
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <div className="bg-white/90 hover:bg-white rounded-lg px-3 py-2 flex items-center space-x-2 text-sm font-medium text-gray-700 shadow-md">
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <div className="rounded-lg px-3 py-2 flex items-center space-x-2 text-sm font-['Milling'] backdrop-blur-[20px]"
+                                 style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: 'var(--zinc-700)' }}>
                                 <EyeIcon className="h-4 w-4" />
                                 <span>View Details</span>
                             </div>
                         </div>
                     </>
                 ) : (
-                    <video 
-                        ref={videoRef} 
-                        muted 
-                        autoPlay 
-                        loop 
-                        playsInline 
+                    <video
+                        ref={videoRef}
+                        muted
+                        autoPlay
+                        loop
+                        playsInline
                         disablePictureInPicture
                         controlsList="nodownload nofullscreen noremoteplayback"
                         className="w-full h-full object-cover"
@@ -204,45 +212,39 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                     <div className="absolute inset-0 pointer-events-none transition-opacity duration-100 ease-in-out"
                          style={{ background: 'linear-gradient(rgba(29, 28, 27, 0.5) 0%, rgba(29, 28, 27, 0) 25%, rgba(29, 28, 27, 0) 70%, rgba(29, 28, 27, 0.7) 100%)' }}>
                         {/* Confidence Level Badge (HIGH/MEDIUM/LOW) - Top Left */}
-                        <div className="absolute top-3 left-5">
-                            <div className={`flex items-center px-2 py-1 rounded border ${
-                                searchScore >= 80
-                                    ? 'bg-lime-900/70 border-lime-400 text-lime-400'
-                                    : searchScore >= 60
-                                    ? 'bg-yellow-900/70 border-yellow-400 text-yellow-400'
-                                    : 'bg-gray-900/70 border-gray-400 text-gray-400'
-                            }`}>
-                                <p className="text-xs uppercase font-semibold">
-                                    {searchScore >= 80 ? 'HIGH' : searchScore >= 60 ? 'MEDIUM' : 'LOW'}
+                        <div className="absolute top-4 left-5">
+                            <div className={`confidence-badge ${getConfidenceBadgeClass(searchScore)}`}>
+                                <p className="text-xs uppercase font-semibold font-['Milling']">
+                                    {getConfidenceLabel(searchScore)}
                                 </p>
                             </div>
                         </div>
 
                         {/* Timestamp Badge - Top Right */}
                         {isClip && clipStart !== undefined && clipEnd !== undefined && (
-                            <div className="absolute top-3 right-5">
-                                <div className="px-2 py-1 rounded-md border border-white backdrop-blur-[20px] bg-black/30">
-                                    <div className="text-xs text-white font-mono whitespace-nowrap">
+                            <div className="absolute top-4 right-5">
+                                <div className="tag-outline">
+                                    <span className="text-xs font-mono whitespace-nowrap">
                                         {formatDuration(clipStart)} - {formatDuration(clipEnd)}
-                                    </div>
+                                    </span>
                                 </div>
                             </div>
                         )}
 
                         {/* Progress Bar at Bottom - Shows matched segment */}
                         {isClip && clipStart !== undefined && clipEnd !== undefined && duration && (
-                            <div className="absolute bottom-5 left-5 right-5 h-2 bg-gray-200/40 rounded-lg">
+                            <div className="absolute bottom-5 left-5 right-5 h-2 rounded-lg"
+                                 style={{ backgroundColor: 'rgba(255,255,255,0.3)' }}>
                                 <div
-                                    className={`absolute top-0 h-full rounded-xs ${
-                                        searchScore >= 80
-                                            ? 'bg-lime-500'
-                                            : searchScore >= 60
-                                            ? 'bg-yellow-500'
-                                            : 'bg-gray-500'
-                                    }`}
+                                    className="absolute top-0 h-full rounded-sm"
                                     style={{
                                         left: `${(clipStart / duration) * 100}%`,
-                                        width: `${((clipEnd - clipStart) / duration) * 100}%`
+                                        width: `${((clipEnd - clipStart) / duration) * 100}%`,
+                                        backgroundColor: searchScore >= 80
+                                            ? 'var(--color-light-green)'
+                                            : searchScore >= 60
+                                            ? 'var(--color-orange)'
+                                            : 'var(--zinc-400)'
                                     }}
                                 />
                             </div>
@@ -255,20 +257,28 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                     <>
                         {/* Duration Badge */}
                         {actualDuration && (
-                            <div className="absolute bottom-3 left-3 bg-black/80 text-white px-3 py-1 rounded-lg text-sm font-medium backdrop-blur-sm">
-                                {isClip ? `${formatDuration(actualDuration)} clip` : formatDuration(actualDuration)}
+                            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                                <div className="p-1 rounded outline outline-1 outline-white/80 backdrop-blur-sm"
+                                     style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                                    <span className="text-white text-xs font-semibold uppercase tracking-tight font-['Milling']">
+                                        {isClip ? `${formatDuration(actualDuration)} clip` : formatDuration(actualDuration)}
+                                    </span>
+                                </div>
                             </div>
                         )}
 
                         {/* Priority Indicator */}
-                        <div className="absolute bottom-3 right-3">
-                            <div className={`w-3 h-3 rounded-full ${getPriorityColor(clipPriority)} shadow-lg`}></div>
+                        <div className="absolute bottom-4 right-4">
+                            <div className="w-3 h-3 rounded-full shadow-lg"
+                                 style={getPriorityStyle(clipPriority)}></div>
                         </div>
 
                         {/* Search Score Badge */}
                         {searchScore && (
-                            <div className="absolute top-3 left-3 bg-lime-500 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-lg backdrop-blur-sm">
-                                {searchScore.toFixed(1)}
+                            <div className="absolute top-4 left-4">
+                                <div className="confidence-badge confidence-high">
+                                    <span className="font-bold">{searchScore.toFixed(1)}</span>
+                                </div>
                             </div>
                         )}
                     </>
@@ -277,7 +287,8 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
 
 
             {/* Title Below Video */}
-            <p className="text-base text-gray-900 truncate mt-2 font-inter">
+            <p className="text-sm truncate mt-3 text-center font-['Milling']"
+               style={{ color: 'var(--zinc-900)' }}>
                 {name || 'Untitled Video'}
             </p>
         </div>

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(done)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.twelvelabs.io)"
+      "WebFetch(domain:docs.twelvelabs.io)",
+      "Bash(tree:*)"
     ]
   }
 }

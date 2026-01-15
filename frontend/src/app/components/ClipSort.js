@@ -229,21 +229,21 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 shadow-sm sticky top-24 z-40">
+    <div className="border-b shadow-soft sticky top-24 z-40" style={{ backgroundColor: 'var(--color-white-200)', borderColor: 'var(--zinc-300)' }}>
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
 
           {/* Semantic Search - Main Feature */}
           <div className="flex-1">
             <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 font-inter mb-3">
-                <SparklesIcon className="inline h-4 w-4 mr-2 text-lime-500" />
+              <label className="block text-sm font-normal font-['Milling'] mb-3" style={{ color: 'var(--zinc-700)' }}>
+                <SparklesIcon className="inline h-4 w-4 mr-2" style={{ color: 'var(--color-green)' }} />
                 AI-Powered Semantic Search
               </label>
 
               {/* Search Input */}
               <div className="relative">
-                <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5" style={{ color: 'var(--zinc-500)' }} />
                 <input
                   type="text"
                   value={searchQuery}
@@ -251,14 +251,29 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                   onFocus={() => setShowExamples(true)}
                   onKeyDown={handleKeyDown}
                   placeholder="Search surgical videos by procedure, tools, or techniques..."
-                  className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 rounded-xl bg-white focus:ring-2 focus:ring-lime-500 focus:border-lime-500 transition-all duration-200 font-inter placeholder-gray-500"
+                  className="w-full pl-12 pr-4 py-4 text-lg border rounded-xl transition-all duration-200 font-['Milling'] focus:outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'white',
+                    borderColor: 'var(--zinc-300)',
+                    color: 'var(--zinc-900)',
+                    '--tw-ring-color': 'var(--color-green)'
+                  }}
                 />
 
                 {/* Clear Button - Only show when there's text */}
                 {searchQuery && (
                   <button
                     onClick={handleClearSearch}
-                    className="cursor-pointer absolute right-32 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-2 rounded-full hover:bg-gray-100"
+                    className="cursor-pointer absolute right-32 top-1/2 transform -translate-y-1/2 transition-colors duration-200 p-2 rounded-full"
+                    style={{ color: 'var(--zinc-500)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--zinc-200)';
+                      e.currentTarget.style.color = 'var(--zinc-700)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--zinc-500)';
+                    }}
                     aria-label="Clear search"
                   >
                     <XMarkIcon className="h-5 w-5" />
@@ -269,7 +284,19 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                 <button
                   onClick={handleSearch}
                   disabled={isSearching}
-                  className="cursor-pointer absolute right-2 top-1/2 transform -translate-y-1/2 bg-lime-500 hover:bg-lime-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded-lg transition-all duration-200 font-medium font-inter"
+                  className="cursor-pointer absolute right-2 top-1/2 transform -translate-y-1/2 text-white px-6 py-2 rounded-lg transition-all duration-200 font-normal font-['Milling']"
+                  style={{
+                    backgroundColor: isSearching ? 'var(--zinc-400)' : 'var(--color-confidence-high)',
+                    cursor: isSearching ? 'not-allowed' : 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSearching) {
+                      e.currentTarget.style.opacity = '0.9';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1';
+                  }}
                 >
                   {isSearching ? 'Searching...' : 'Search'}
                 </button>
@@ -282,19 +309,27 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                     className="fixed inset-0 z-30"
                     onClick={() => setShowExamples(false)}
                   ></div>
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-200 z-40 animate-in slide-in-from-top-2 duration-200">
-                    <div className="p-4 border-b border-gray-100">
-                      <h3 className="text-sm font-semibold text-gray-900 font-inter mb-2">Example Searches</h3>
-                      <p className="text-xs text-gray-600">Click any example to try it out</p>
+                  <div className="absolute top-full left-0 right-0 mt-2 rounded-xl shadow-card border z-40 animate-in slide-in-from-top-2 duration-200"
+                       style={{ backgroundColor: 'white', borderColor: 'var(--zinc-200)' }}>
+                    <div className="p-4 border-b" style={{ borderColor: 'var(--zinc-200)' }}>
+                      <h3 className="text-sm font-normal font-['Milling'] mb-2" style={{ color: 'var(--zinc-900)' }}>Example Searches</h3>
+                      <p className="text-xs font-['Milling']" style={{ color: 'var(--zinc-600)' }}>Click any example to try it out</p>
                     </div>
-                    <div className="max-h-64 overflow-y-auto p-2">
+                    <div className="max-h-64 overflow-y-auto scrollbar-thin p-2">
                       {exampleQueries.map((example, index) => (
                         <button
                           key={index}
                           onClick={() => handleExampleClick(example)}
-                          className="cursor-pointer w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-150 font-inter"
+                          className="cursor-pointer w-full text-left px-3 py-2 text-sm rounded-lg transition-colors duration-150 font-['Milling']"
+                          style={{ color: 'var(--zinc-700)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--zinc-100)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
                         >
-                          <SparklesIcon className="inline h-3 w-3 mr-2 text-lime-500" />
+                          <SparklesIcon className="inline h-3 w-3 mr-2" style={{ color: 'var(--color-green)' }} />
                           {example}
                         </button>
                       ))}
@@ -310,14 +345,25 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
 
             {/* Sort By Dropdown */}
             <div className="relative">
-              <label className="block text-sm font-medium text-gray-700 font-inter mb-3">
+              <label className="block text-sm font-normal font-['Milling'] mb-3" style={{ color: 'var(--zinc-700)' }}>
                 <FunnelIcon className="inline h-4 w-4 mr-2" />
                 Sort By
               </label>
               <div className="relative">
                 <button
                   onClick={() => setShowSortDropdown(!showSortDropdown)}
-                  className="flex items-center space-x-2 px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium font-inter text-gray-700 hover:bg-gray-50 transition-all duration-200 min-w-40"
+                  className="flex items-center space-x-2 px-4 py-3 border rounded-xl text-sm font-normal font-['Milling'] transition-all duration-200 min-w-40"
+                  style={{
+                    backgroundColor: 'white',
+                    borderColor: 'var(--zinc-300)',
+                    color: 'var(--zinc-700)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'var(--zinc-100)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'white';
+                  }}
                 >
                   {React.createElement(sortOptions.find(opt => opt.value === sortBy)?.icon || CalendarDaysIcon, { className: "h-4 w-4" })}
                   <span>{sortOptions.find(opt => opt.value === sortBy)?.label}</span>
@@ -327,7 +373,8 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                 {showSortDropdown && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setShowSortDropdown(false)}></div>
-                    <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 z-40 min-w-40 animate-in slide-in-from-top-2 duration-200">
+                    <div className="absolute top-full left-0 mt-1 rounded-xl shadow-card border z-40 min-w-40 animate-in slide-in-from-top-2 duration-200"
+                         style={{ backgroundColor: 'white', borderColor: 'var(--zinc-200)' }}>
                       {sortOptions.map((option) => (
                         <button
                           key={option.value}
@@ -335,7 +382,14 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
                             setSortBy(option.value);
                             setShowSortDropdown(false);
                           }}
-                          className="flex items-center space-x-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl transition-colors duration-150 font-inter"
+                          className="flex items-center space-x-2 w-full px-4 py-2 text-sm first:rounded-t-xl last:rounded-b-xl transition-colors duration-150 font-['Milling']"
+                          style={{ color: 'var(--zinc-700)' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--zinc-100)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
                         >
                           <option.icon className="h-4 w-4" />
                           <span>{option.label}</span>
