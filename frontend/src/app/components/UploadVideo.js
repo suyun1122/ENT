@@ -5,13 +5,13 @@ import { upload } from "@vercel/blob/client";
 import { useUpload } from "../contexts/UploadContext";
 import {
   VideoCameraIcon,
-  CloudArrowUpIcon,
   PlusIcon,
-  ClockIcon,
+  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 
 export default function UploadVideo() {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const {
     isUploading,
     progress,
@@ -27,8 +27,8 @@ export default function UploadVideo() {
 
   // Poll for tool detection completion, then cleanup blob
   const waitForDetectionAndCleanup = async (videoId, blobUrl, taskId) => {
-    const POLL_INTERVAL = 10000; // 10 seconds
-    const MAX_POLLS = 60; // 10 minutes max (60 * 10s)
+    const POLL_INTERVAL = 10000;
+    const MAX_POLLS = 60;
     let pollCount = 0;
 
     const checkDetection = async () => {
@@ -42,7 +42,6 @@ export default function UploadVideo() {
         console.log(`[Detection Cleanup] Status: ${data.status}`);
 
         if (data.status === 'completed') {
-          // Verify detection data is not empty
           const hasValidData = data.data &&
             (data.data.frames?.length > 0 ||
              data.data.detections?.length > 0 ||
@@ -56,12 +55,7 @@ export default function UploadVideo() {
             }
           }
 
-          // Detection complete with valid data! Now safe to cleanup blob
           console.log('[Detection Cleanup] Detection complete with valid data, cleaning up blob...');
-          console.log('[Detection Cleanup] Data summary:', {
-            frames: data.data?.frames?.length || 0,
-            classes: Object.keys(data.data?.classes || {}).length || 0
-          });
 
           try {
             await fetch(`/api/upload/status/${taskId}`, {
@@ -75,7 +69,6 @@ export default function UploadVideo() {
           }
           return;
         } else if (data.status === 'error' || pollCount >= MAX_POLLS) {
-          // Error or timeout - cleanup anyway to avoid orphaned blobs
           console.log('[Detection Cleanup] Detection failed or timeout, cleaning up blob anyway...');
           try {
             await fetch(`/api/upload/status/${taskId}`, {
@@ -88,13 +81,11 @@ export default function UploadVideo() {
           }
           return;
         } else {
-          // Still processing - continue polling
           setTimeout(checkDetection, POLL_INTERVAL);
         }
       } catch (error) {
         console.error('[Detection Cleanup] Poll error:', error);
         if (pollCount >= MAX_POLLS) {
-          // Timeout - cleanup anyway
           try {
             await fetch(`/api/upload/status/${taskId}`, {
               method: 'POST',
@@ -110,14 +101,13 @@ export default function UploadVideo() {
       }
     };
 
-    // Start polling for detection completion
     checkDetection();
   };
 
   // Poll for indexing status
   const pollIndexingStatus = async (taskId, blobUrl) => {
-    const POLL_INTERVAL = 5000; // 5 seconds
-    const MAX_POLLS = 120; // 10 minutes max (120 * 5s)
+    const POLL_INTERVAL = 5000;
+    const MAX_POLLS = 120;
     let pollCount = 0;
 
     return new Promise((resolve, reject) => {
@@ -126,23 +116,19 @@ export default function UploadVideo() {
           pollCount++;
           console.log(`[Indexing Status] Polling ${pollCount}/${MAX_POLLS}...`);
 
-          // Pass blobUrl so server can trigger tool detection when ready
           const encodedBlobUrl = encodeURIComponent(blobUrl);
           const response = await fetch(`/api/upload/status/${taskId}?blobUrl=${encodedBlobUrl}`);
           const data = await response.json();
 
           console.log(`[Indexing Status] Status: ${data.status}, videoId: ${data.videoId || 'pending'}`);
 
-          // Update stage with actual TwelveLabs status
           if (data.status && data.status !== 'ready' && data.status !== 'failed') {
             setStage(data.status);
           }
 
           if (data.status === 'ready') {
-            // Indexing complete - tool detection was triggered by the server
             console.log('[Indexing Status] Video ready! Tool detection triggered:', data.toolDetectionTriggered);
 
-            // Save blob URL mapping for future use (tool detection when returning to page)
             try {
               await fetch(`/api/video-urls/${data.videoId}`, {
                 method: 'PUT',
@@ -154,12 +140,10 @@ export default function UploadVideo() {
               console.warn('[Indexing Status] Failed to save blob URL mapping:', mappingError);
             }
 
-            // Start background polling for detection completion, then cleanup
             if (data.toolDetectionTriggered) {
               console.log('[Indexing Status] Starting background detection monitoring...');
               waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
             } else {
-              // No tool detection triggered, cleanup immediately
               try {
                 await fetch(`/api/upload/status/${taskId}`, {
                   method: 'POST',
@@ -177,7 +161,6 @@ export default function UploadVideo() {
           } else if (pollCount >= MAX_POLLS) {
             reject(new Error('Indexing timeout - please check video status later'));
           } else {
-            // Still processing - continue polling
             setTimeout(checkStatus, POLL_INTERVAL);
           }
         } catch (error) {
@@ -185,7 +168,6 @@ export default function UploadVideo() {
           if (pollCount >= MAX_POLLS) {
             reject(error);
           } else {
-            // Retry on error
             setTimeout(checkStatus, POLL_INTERVAL);
           }
         }
@@ -200,7 +182,6 @@ export default function UploadVideo() {
     startUpload(file.name);
 
     try {
-      // Step 1: Upload to Vercel Blob
       console.log("[Blob Upload] Step 1: Uploading to Vercel Blob...");
 
       const blob = await upload(file.name, file, {
@@ -215,7 +196,6 @@ export default function UploadVideo() {
 
       console.log("[Blob Upload] Uploaded to Blob:", blob.url);
 
-      // Step 2: Start TwelveLabs indexing (returns immediately with taskId)
       setStage('indexing');
       console.log("[Blob Upload] Step 2: Starting TwelveLabs indexing...");
 
@@ -238,12 +218,10 @@ export default function UploadVideo() {
       const indexData = await indexResponse.json();
       console.log("[Blob Upload] Indexing started, taskId:", indexData.taskId);
 
-      // Step 3: Poll for indexing completion
       console.log("[Blob Upload] Step 3: Polling for indexing completion...");
       const videoId = await pollIndexingStatus(indexData.taskId, blob.url);
       console.log("[Blob Upload] Video indexed successfully, videoId:", videoId);
 
-      // Complete upload - toast will show automatically
       completeUpload(videoId);
 
       return {
@@ -311,24 +289,21 @@ export default function UploadVideo() {
   };
 
   return (
-    <div
-      className={`rounded-[32px] shadow-soft hover:shadow-card transition-all duration-300 overflow-hidden group transform hover:-translate-y-1 ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
-      style={{ backgroundColor: 'var(--color-white-200)' }}
-    >
-      {/* Upload Area - Top Section (matches video thumbnail height) */}
+    <div className="group cursor-pointer">
+      {/* Video/Thumbnail Container - Same as ClipCard */}
       <div
         onClick={handleClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className="relative h-48 overflow-hidden transition-all duration-300 ease-in-out flex flex-col items-center justify-center"
+        className={`relative aspect-video w-full rounded-[32px] overflow-hidden shadow-soft hover:shadow-card transition-all duration-300 transform hover:-translate-y-1 ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
         style={{
           backgroundColor: isUploading
-            ? 'var(--color-blue)'
+            ? 'var(--zinc-300)'
             : isDragOver
-            ? 'var(--color-light-purple)'
+            ? 'var(--zinc-300)'
             : error
-            ? 'var(--color-light-pink)'
+            ? 'var(--zinc-300)'
             : 'var(--zinc-200)',
           cursor: isUploading ? 'not-allowed' : 'pointer'
         }}
@@ -343,181 +318,131 @@ export default function UploadVideo() {
           className="hidden"
         />
 
-        {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0 bg-button-gradient"></div>
-        </div>
-
         {/* Main Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center p-6 text-center">
-          {/* Disabled State (uploading in progress) */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+          {/* Uploading State */}
           {isUploading && (
             <>
-              <div className="mb-4 p-4 rounded-full shadow-soft" style={{ backgroundColor: 'var(--zinc-300)', color: 'var(--zinc-500)' }}>
-                <VideoCameraIcon className="h-8 w-8" />
+              <div className="mb-3 p-3 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: 'var(--zinc-500)' }}>
+                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--zinc-400)', borderTopColor: 'transparent' }} />
               </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-normal font-['Milling']" style={{ color: 'var(--zinc-500)' }}>
-                  Upload in Progress
-                </h3>
-                <p className="text-sm font-['Milling']" style={{ color: 'var(--zinc-500)' }}>
-                  Please wait for current upload to complete
-                </p>
-              </div>
+              <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
+                Uploading...
+              </h3>
             </>
           )}
 
           {/* Error State */}
           {error && !isUploading && (
             <>
-              <div className="mb-4 p-4 rounded-full shadow-soft" style={{ backgroundColor: 'var(--color-light-pink)', color: 'var(--color-red)' }}>
-                <div className="relative">
-                  <VideoCameraIcon className="h-8 w-8" />
-                  <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--color-red)' }}>
-                    <span className="text-white text-xs font-bold">!</span>
-                  </div>
-                </div>
+              <div className="mb-3 p-3 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: 'var(--color-red)' }}>
+                <VideoCameraIcon className="h-8 w-8" />
               </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-normal font-['Milling']" style={{ color: 'var(--color-red)' }}>
-                  Upload Failed
-                </h3>
-                <p className="text-sm font-['Milling']" style={{ color: 'var(--color-red)' }}>{error}</p>
-                <button
-                  onClick={handleDismissError}
-                  className="text-xs underline transition-opacity hover:opacity-70"
-                  style={{ color: 'var(--color-red)' }}
-                >
-                  Try Again
-                </button>
-              </div>
+              <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--color-red)' }}>
+                Upload Failed
+              </h3>
+              <button
+                onClick={handleDismissError}
+                className="mt-2 text-xs underline transition-opacity hover:opacity-70"
+                style={{ color: 'var(--zinc-600)' }}
+              >
+                Try Again
+              </button>
             </>
           )}
 
           {/* Normal State */}
           {!isUploading && !error && (
             <>
-              {/* Icon Container */}
               <div
-                className="mb-4 p-4 rounded-full transition-all duration-300 shadow-soft group-hover:scale-110"
+                className="mb-3 p-4 rounded-full transition-all duration-300 group-hover:scale-110"
                 style={{
-                  backgroundColor: isDragOver ? 'var(--color-light-purple)' : 'rgba(255,255,255,0.8)',
-                  color: isDragOver ? 'var(--zinc-800)' : 'var(--zinc-600)'
+                  backgroundColor: 'rgba(255,255,255,0.9)',
+                  color: 'var(--zinc-600)'
                 }}
               >
                 <div className="relative">
                   <VideoCameraIcon className="h-8 w-8" />
-                  <PlusIcon
-                    className="absolute -top-1 -right-1 h-4 w-4 transition-all duration-300"
-                    style={{ color: isDragOver ? 'var(--zinc-800)' : 'var(--zinc-500)' }}
-                  />
+                  <PlusIcon className="absolute -top-1 -right-1 h-4 w-4" style={{ color: 'var(--zinc-500)' }} />
                 </div>
               </div>
-
-              {/* Text Content */}
-              <div className="space-y-2">
-                <h3
-                  className="text-lg font-normal font-['Milling'] transition-colors duration-300"
-                  style={{ color: isDragOver ? 'var(--zinc-900)' : 'var(--zinc-800)' }}
-                >
-                  Upload Video
-                </h3>
-
-                <p
-                  className="text-sm font-['Milling'] transition-colors duration-300"
-                  style={{ color: isDragOver ? 'var(--zinc-700)' : 'var(--zinc-600)' }}
-                >
-                  Click to browse or drag & drop
-                </p>
-              </div>
+              <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--zinc-700)' }}>
+                Upload Video
+              </h3>
+              <p className="text-sm font-['Milling'] mt-1" style={{ color: 'var(--zinc-500)' }}>
+                Click or drag & drop
+              </p>
             </>
           )}
         </div>
 
-        {/* Overlay for drag state */}
+        {/* Drag Overlay */}
         {isDragOver && (
-          <div className="absolute inset-0 border-4 border-dashed pointer-events-none" style={{ borderColor: 'var(--color-light-purple)', backgroundColor: 'rgba(251,223,255,0.3)' }}></div>
+          <div className="absolute inset-0 border-4 border-dashed pointer-events-none rounded-[32px]" style={{ borderColor: 'var(--zinc-400)', backgroundColor: 'rgba(255,255,255,0.3)' }}></div>
         )}
-      </div>
 
-      {/* Bottom Info Section (matches ClipCard structure) */}
-      <div className="p-4 space-y-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-normal font-['Milling'] group-hover:opacity-80 transition-opacity" style={{ color: 'var(--zinc-900)' }}>
-            Upload Video
-          </h3>
-          <p className="text-xs font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-            Click to browse or drag & drop
-          </p>
-        </div>
+        {/* Info Icon - Bottom Right */}
+        {!isUploading && !error && (
+          <div
+            className="absolute bottom-4 right-4 z-10"
+            onMouseEnter={() => setShowInfo(true)}
+            onMouseLeave={() => setShowInfo(false)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-1.5 rounded-full transition-colors" style={{ backgroundColor: 'rgba(255,255,255,0.9)' }}>
+              <InformationCircleIcon className="h-5 w-5" style={{ color: 'var(--zinc-500)' }} />
+            </div>
 
-        {/* Video Info Icons */}
-        <div className="flex items-center gap-3 text-xs font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-          <span className="flex items-center gap-1">
-            <ClockIcon className="w-4 h-4" />
-            ~2-3 min
-          </span>
-          <span className="flex items-center gap-1">
-            <VideoCameraIcon className="w-4 h-4" />
-            MP4, MOV, AVI
-          </span>
-        </div>
+            {/* Info Tooltip - Opens to the left to avoid clipping */}
+            {showInfo && (
+              <div
+                className="absolute bottom-0 right-full mr-2 w-56 p-3 rounded-xl shadow-card z-50"
+                style={{ backgroundColor: 'white', border: '1px solid var(--zinc-200)' }}
+              >
+                <h4 className="text-xs font-bold font-['Milling'] mb-2" style={{ color: 'var(--zinc-800)' }}>
+                  Processing Steps
+                </h4>
 
-        {/* Processing Steps */}
-        <div className="pt-3 border-t space-y-2.5" style={{ borderColor: 'var(--zinc-200)' }}>
-          <div className="flex items-start gap-2">
-            <div className="flex-shrink-0 w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] font-bold mt-0.5" style={{ backgroundColor: 'var(--color-blue)' }}>
-              1
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-normal font-['Milling']" style={{ color: 'var(--zinc-800)' }}>
-                Video Indexing
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
+                      1
+                    </div>
+                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Video Indexing</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
+                      2
+                    </div>
+                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Tool Detection</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
+                      3
+                    </div>
+                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Surgical Analysis</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
+                      4
+                    </div>
+                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Results Ready</span>
+                  </div>
+                </div>
+
+                <div className="mt-2 pt-2 border-t space-y-1 text-[10px] font-['Milling']" style={{ borderColor: 'var(--zinc-200)', color: 'var(--zinc-500)' }}>
+                  <div className="flex items-center gap-3">
+                    <span>~3-4 min</span>
+                    <span>MP4, MOV, AVI</span>
+                  </div>
+                  <div>
+                    <span>Max file size: 100MB</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-[11px] leading-tight font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-                AI analyzes your video content
-              </div>
-            </div>
+            )}
           </div>
-          <div className="flex items-start gap-2">
-            <div className="flex-shrink-0 w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] font-bold mt-0.5" style={{ backgroundColor: 'var(--color-green)' }}>
-              2
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-normal font-['Milling']" style={{ color: 'var(--zinc-800)' }}>
-                Tool Detection
-              </div>
-              <div className="text-[11px] leading-tight font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-                YOLO11m detects surgical tools
-              </div>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <div className="flex-shrink-0 w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] font-bold mt-0.5" style={{ backgroundColor: 'var(--color-light-purple)', color: 'var(--zinc-800)' }}>
-              3
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-normal font-['Milling']" style={{ color: 'var(--zinc-800)' }}>
-                Surgical Analysis
-              </div>
-              <div className="text-[11px] leading-tight font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-                Generate phases & SOAP notes
-              </div>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <div className="flex-shrink-0 w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] font-bold mt-0.5" style={{ backgroundColor: 'var(--color-orange)' }}>
-              4
-            </div>
-            <div className="flex-1">
-              <div className="text-xs font-normal font-['Milling']" style={{ color: 'var(--zinc-800)' }}>
-                Results Ready
-              </div>
-              <div className="text-[11px] leading-tight font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
-                View & chat with your video
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

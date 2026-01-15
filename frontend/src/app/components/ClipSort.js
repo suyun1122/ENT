@@ -154,7 +154,7 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
   };
 
   return (
-    <div className="sticky top-24 z-40 py-6" style={{ backgroundColor: 'var(--zinc-100)' }}>
+    <div className="py-6" style={{ backgroundColor: 'var(--zinc-100)' }}>
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Search Input - CreatorDiscovery Style */}
         <div className="relative">

@@ -2,14 +2,6 @@
 
 import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
-import {
-  PlayIcon,
-  CalendarIcon,
-  ClockIcon,
-  EyeIcon,
-  TagIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
 import Hls from 'hls.js';
 import { useRouter } from 'next/navigation';
 
@@ -24,31 +16,6 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
         ? clipEnd - clipStart
         : duration;
 
-    // Get category and priority from props or determine from filename
-    const getCategory = () => {
-      if (category) return category;
-      const filename = name?.toLowerCase() || '';
-      if (filename.includes('safety') || filename.includes('ppe') || filename.includes('helmet')) {
-        return 'safety';
-      } else if (filename.includes('defect') || filename.includes('quality') || filename.includes('error')) {
-        return 'defect';
-      }
-      return 'general';
-    };
-
-    const getPriority = () => {
-      if (priority) return priority;
-      const filename = name?.toLowerCase() || '';
-      if (filename.includes('urgent') || filename.includes('critical') || filename.includes('emergency')) {
-        return 'high';
-      } else if (filename.includes('warning') || filename.includes('caution')) {
-        return 'medium';
-      }
-      return 'low';
-    };
-
-    const clipCategory = getCategory();
-    const clipPriority = getPriority();
 
     useEffect(() => {
         let hls;
@@ -121,15 +88,6 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const getPriorityStyle = (priority) => {
-        switch(priority) {
-            case 'high': return { backgroundColor: 'var(--color-red)' };
-            case 'medium': return { backgroundColor: 'var(--color-orange)' };
-            case 'low': return { backgroundColor: 'var(--color-green)' };
-            default: return { backgroundColor: 'var(--zinc-500)' };
-        }
-    };
-
     const handleClick = () => {
         console.log('View clip details for:', vss_id || name);
         router.push(`/clips/${name}`); // Navigate to clip detail page
@@ -171,26 +129,8 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                         ) : (
                             <div className="w-full h-full flex items-center justify-center"
                                  style={{ background: 'linear-gradient(135deg, var(--zinc-300), var(--zinc-400))' }}>
-                                <PlayIcon className="h-16 w-16" style={{ color: 'var(--zinc-600)' }} />
                             </div>
                         )}
-
-                        {/* Play Button Overlay */}
-                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-all duration-300 flex items-center justify-center">
-                            <div className="w-16 h-16 bg-white/95 rounded-full flex items-center justify-center group-hover:bg-white group-hover:scale-110 transition-all duration-300"
-                                 style={{ boxShadow: 'var(--shadow-card)' }}>
-                                <PlayIcon className="h-7 w-7 ml-1" style={{ color: 'var(--zinc-700)' }} />
-                            </div>
-                        </div>
-
-                        {/* View Details Button */}
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <div className="rounded-lg px-3 py-2 flex items-center space-x-2 text-sm font-['Milling'] backdrop-blur-[20px]"
-                                 style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: 'var(--zinc-700)' }}>
-                                <EyeIcon className="h-4 w-4" />
-                                <span>View Details</span>
-                            </div>
-                        </div>
                     </>
                 ) : (
                     <video
@@ -258,26 +198,11 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                         {/* Duration Badge */}
                         {actualDuration && (
                             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-                                <div className="p-1 rounded outline outline-1 outline-white/80 backdrop-blur-sm"
+                                <div className="px-2 py-0.5 rounded outline outline-1 outline-white/80 backdrop-blur-sm"
                                      style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                                    <span className="text-white text-xs font-semibold uppercase tracking-tight font-['Milling']">
+                                    <span className="text-white text-xs font-semibold uppercase tracking-tight font-['Milling'] leading-none">
                                         {isClip ? `${formatDuration(actualDuration)} clip` : formatDuration(actualDuration)}
                                     </span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Priority Indicator */}
-                        <div className="absolute bottom-4 right-4">
-                            <div className="w-3 h-3 rounded-full shadow-lg"
-                                 style={getPriorityStyle(clipPriority)}></div>
-                        </div>
-
-                        {/* Search Score Badge */}
-                        {searchScore && (
-                            <div className="absolute top-4 left-4">
-                                <div className="confidence-badge confidence-high">
-                                    <span className="font-bold">{searchScore.toFixed(1)}</span>
                                 </div>
                             </div>
                         )}
