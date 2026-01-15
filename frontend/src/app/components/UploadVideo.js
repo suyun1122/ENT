@@ -4,18 +4,13 @@ import { useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { useUpload } from "../contexts/UploadContext";
 import {
-  VideoCameraIcon,
-  PlusIcon,
-  InformationCircleIcon,
+  ArrowUpIcon,
 } from "@heroicons/react/24/outline";
 
 export default function UploadVideo() {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
   const {
     isUploading,
-    progress,
-    stage,
     error,
     startUpload,
     updateProgress,
@@ -290,21 +285,16 @@ export default function UploadVideo() {
 
   return (
     <div className="group cursor-pointer">
-      {/* Video/Thumbnail Container - Same as ClipCard */}
+      {/* Upload Container with Dashed Border */}
       <div
         onClick={handleClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative aspect-video w-full rounded-[32px] overflow-hidden shadow-soft hover:shadow-card transition-all duration-300 transform hover:-translate-y-1 ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
+        className={`relative aspect-video w-full rounded-[32px] border-2 border-dashed transition-all duration-300 ${isUploading ? 'opacity-60 pointer-events-none' : ''}`}
         style={{
-          backgroundColor: isUploading
-            ? 'var(--zinc-300)'
-            : isDragOver
-            ? 'var(--zinc-300)'
-            : error
-            ? 'var(--zinc-300)'
-            : 'var(--zinc-200)',
+          borderColor: isDragOver ? 'var(--zinc-500)' : 'var(--zinc-300)',
+          backgroundColor: isDragOver ? 'var(--zinc-200)' : 'transparent',
           cursor: isUploading ? 'not-allowed' : 'pointer'
         }}
       >
@@ -319,12 +309,12 @@ export default function UploadVideo() {
         />
 
         {/* Main Content */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
           {/* Uploading State */}
           {isUploading && (
             <>
-              <div className="mb-3 p-3 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: 'var(--zinc-500)' }}>
-                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--zinc-400)', borderTopColor: 'transparent' }} />
+              <div className="mb-3">
+                <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--zinc-400)', borderTopColor: 'transparent' }} />
               </div>
               <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--zinc-600)' }}>
                 Uploading...
@@ -335,9 +325,6 @@ export default function UploadVideo() {
           {/* Error State */}
           {error && !isUploading && (
             <>
-              <div className="mb-3 p-3 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.8)', color: 'var(--color-red)' }}>
-                <VideoCameraIcon className="h-8 w-8" />
-              </div>
               <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--color-red)' }}>
                 Upload Failed
               </h3>
@@ -354,95 +341,33 @@ export default function UploadVideo() {
           {/* Normal State */}
           {!isUploading && !error && (
             <>
-              <div
-                className="mb-3 p-4 rounded-full transition-all duration-300 group-hover:scale-110"
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.9)',
-                  color: 'var(--zinc-600)'
-                }}
-              >
-                <div className="relative">
-                  <VideoCameraIcon className="h-8 w-8" />
-                  <PlusIcon className="absolute -top-1 -right-1 h-4 w-4" style={{ color: 'var(--zinc-500)' }} />
-                </div>
+              {/* Arrow Up Icon */}
+              <div className="mb-3">
+                <ArrowUpIcon className="h-6 w-6" style={{ color: 'var(--zinc-800)' }} strokeWidth={2} />
               </div>
-              <h3 className="text-base font-normal font-['Milling']" style={{ color: 'var(--zinc-700)' }}>
-                Upload Video
+
+              {/* Main Text */}
+              <h3 className="text-base font-normal font-['Milling'] mb-4" style={{ color: 'var(--zinc-800)' }}>
+                Drop videos or browse files
               </h3>
-              <p className="text-sm font-['Milling'] mt-1" style={{ color: 'var(--zinc-500)' }}>
-                Click or drag & drop
+
+              {/* Info Badges */}
+              <div className="flex flex-wrap justify-center gap-2 mb-3">
+                <span className="px-2 py-0.5 text-[11px] font-['Milling'] border rounded" style={{ borderColor: 'var(--zinc-300)', color: 'var(--zinc-600)' }}>
+                  MP4, MOV, AVI
+                </span>
+                <span className="px-2 py-0.5 text-[11px] font-['Milling'] border rounded" style={{ borderColor: 'var(--zinc-300)', color: 'var(--zinc-600)' }}>
+                  Max 100MB
+                </span>
+              </div>
+
+              {/* Processing Note */}
+              <p className="text-[10px] font-['Milling'] text-center px-4" style={{ color: 'var(--zinc-500)' }}>
+                *Processing takes ~3-4 min (indexing, tool detection, analysis)
               </p>
             </>
           )}
         </div>
-
-        {/* Drag Overlay */}
-        {isDragOver && (
-          <div className="absolute inset-0 border-4 border-dashed pointer-events-none rounded-[32px]" style={{ borderColor: 'var(--zinc-400)', backgroundColor: 'rgba(255,255,255,0.3)' }}></div>
-        )}
-
-        {/* Info Icon - Bottom Right */}
-        {!isUploading && !error && (
-          <div
-            className="absolute bottom-4 right-4 z-10"
-            onMouseEnter={() => setShowInfo(true)}
-            onMouseLeave={() => setShowInfo(false)}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-1.5 rounded-full transition-colors" style={{ backgroundColor: 'rgba(255,255,255,0.9)' }}>
-              <InformationCircleIcon className="h-5 w-5" style={{ color: 'var(--zinc-500)' }} />
-            </div>
-
-            {/* Info Tooltip - Opens to the left to avoid clipping */}
-            {showInfo && (
-              <div
-                className="absolute bottom-0 right-full mr-2 w-56 p-3 rounded-xl shadow-card z-50"
-                style={{ backgroundColor: 'white', border: '1px solid var(--zinc-200)' }}
-              >
-                <h4 className="text-xs font-bold font-['Milling'] mb-2" style={{ color: 'var(--zinc-800)' }}>
-                  Processing Steps
-                </h4>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
-                      1
-                    </div>
-                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Video Indexing</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
-                      2
-                    </div>
-                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Tool Detection</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
-                      3
-                    </div>
-                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Surgical Analysis</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ backgroundColor: 'var(--zinc-200)', color: 'var(--zinc-600)' }}>
-                      4
-                    </div>
-                    <span className="text-xs font-['Milling']" style={{ color: 'var(--zinc-700)' }}>Results Ready</span>
-                  </div>
-                </div>
-
-                <div className="mt-2 pt-2 border-t space-y-1 text-[10px] font-['Milling']" style={{ borderColor: 'var(--zinc-200)', color: 'var(--zinc-500)' }}>
-                  <div className="flex items-center gap-3">
-                    <span>~3-4 min</span>
-                    <span>MP4, MOV, AVI</span>
-                  </div>
-                  <div>
-                    <span>Max file size: 100MB</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

@@ -18,7 +18,7 @@ export default function NavBar() {
   };
 
   return (
-    <nav className="border-b shadow-soft sticky top-0 z-50" style={{ backgroundColor: "var(--zinc-100)", borderColor: "var(--zinc-300)" }}>
+    <nav className="sticky top-0 z-50" style={{ backgroundColor: "var(--zinc-100)" }}>
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
           {/* Left side - Title and Badge */}
