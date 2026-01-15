@@ -145,8 +145,11 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           // Tool detection will be started by UploadVideo.js when indexing completes
           if (!videoUrl) {
             console.log('[Tool Detection] No blob URL mapping found - waiting for upload process to trigger detection');
-            setIsLoadingToolDetection(false);
-            detectionStartedRef.current = false;
+            // Start polling to check when detection becomes available
+            // (triggered by UploadVideo.js after indexing completes)
+            setIsLoadingToolDetection(true);
+            setToolDetectionStage('waiting for upload');
+            startPolling(videoId);
             return;
           }
 
@@ -952,9 +955,21 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                       <ToolUsageStatistics detectionData={toolDetectionData} />
                     )}
 
-                    {!toolDetectionData && (
+                    {!toolDetectionData && !isLoadingToolDetection && (
                       <div className="bg-gray-50 rounded-lg border border-gray-200 p-8 text-center">
                         <p className="text-gray-500">Tool detection data not available</p>
+                      </div>
+                    )}
+                    {!toolDetectionData && isLoadingToolDetection && (
+                      <div className="bg-blue-50 rounded-lg border border-blue-200 p-8 text-center">
+                        <div className="flex flex-col items-center space-y-3">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                          <p className="text-blue-600">
+                            {toolDetectionStage === 'waiting for upload'
+                              ? 'Waiting for video upload to complete...'
+                              : `Processing tool detection... ${toolDetectionProgress}%`}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
