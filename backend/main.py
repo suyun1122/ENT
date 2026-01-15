@@ -89,31 +89,34 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
 
     # Check if results already exist in Blob (via frontend API)
     # Only check for "completed" status - ignore "processing" to avoid circular dependency
-    frontend_url = os.environ.get("FRONTEND_URL", "https://surgical-tool-detection.vercel.app")
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            check_response = await client.get(f"{frontend_url}/api/detect-tools/{video_id}")
-            if check_response.status_code == 200:
-                check_data = check_response.json()
-                if check_data.get("status") == "completed":
-                    print(f"[Detection] Results already exist in Blob for {video_id}")
-                    # Store in local cache too
-                    processing_status[video_id] = {
-                        "status": "completed",
-                        "progress": 100,
-                        "stage": "done",
-                        "data": check_data.get("data")
-                    }
-                    return DetectionResponse(
-                        status="completed",
-                        video_id=video_id,
-                        message="Detection already completed"
-                    )
-                # Note: We don't check for "processing" here anymore
-                # The frontend's processing-status was causing a circular dependency
-    except Exception as e:
-        print(f"[Detection] Could not check existing results: {e}")
-        # Continue with processing if check fails
+    frontend_url = os.environ.get("FRONTEND_URL")
+    if not frontend_url:
+        print("[Detection] WARNING: FRONTEND_URL not set, skipping existing results check")
+    else:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                check_response = await client.get(f"{frontend_url}/api/detect-tools/{video_id}")
+                if check_response.status_code == 200:
+                    check_data = check_response.json()
+                    if check_data.get("status") == "completed":
+                        print(f"[Detection] Results already exist in Blob for {video_id}")
+                        # Store in local cache too
+                        processing_status[video_id] = {
+                            "status": "completed",
+                            "progress": 100,
+                            "stage": "done",
+                            "data": check_data.get("data")
+                        }
+                        return DetectionResponse(
+                            status="completed",
+                            video_id=video_id,
+                            message="Detection already completed"
+                        )
+                    # Note: We don't check for "processing" here anymore
+                    # The frontend's processing-status was causing a circular dependency
+        except Exception as e:
+            print(f"[Detection] Could not check existing results: {e}")
+            # Continue with processing if check fails
 
     # Initialize status
     processing_status[video_id] = {
@@ -369,8 +372,11 @@ def run_inference(video_path: str, video_id: str):
 async def upload_results_to_blob(video_id: str, results_data: dict, blob_token: str):
     """Upload detection results via Frontend API (which uses Vercel Blob SDK)"""
 
-    # Frontend API endpoint - use environment variable or default
-    frontend_url = os.environ.get("FRONTEND_URL", "https://surgical-tool-detection.vercel.app")
+    # Frontend API endpoint - REQUIRED environment variable
+    frontend_url = os.environ.get("FRONTEND_URL")
+    if not frontend_url:
+        print(f"[Blob] ERROR: FRONTEND_URL not set, cannot upload results for {video_id}")
+        return
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.put(
