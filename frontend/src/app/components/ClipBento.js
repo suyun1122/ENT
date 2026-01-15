@@ -141,12 +141,13 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             console.log('[Tool Detection] Could not fetch blob URL mapping:', e.message);
           }
 
-          // Fallback to HLS URL (may not work for tool detection)
+          // No fallback to HLS URL - it doesn't work for tool detection
+          // Tool detection will be started by UploadVideo.js when indexing completes
           if (!videoUrl) {
-            videoUrl = clipData?.hls?.video_url || clipData?.source_url;
-            if (videoUrl) {
-              console.log('[Tool Detection] Using HLS URL as fallback (may not work)');
-            }
+            console.log('[Tool Detection] No blob URL mapping found - waiting for upload process to trigger detection');
+            setIsLoadingToolDetection(false);
+            detectionStartedRef.current = false;
+            return;
           }
 
           if (videoUrl) {
