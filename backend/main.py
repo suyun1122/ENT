@@ -11,8 +11,11 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import cv2
-from ultralytics import YOLO
+
+# Lazy imports for heavy dependencies (cv2, ultralytics)
+# These are imported inside functions to allow the server to start quickly
+cv2 = None
+YOLO = None
 
 app = FastAPI(title="Surgical Tool Detection API")
 
@@ -53,22 +56,35 @@ async def startup_event():
 
 async def load_model_background():
     """Load model in background thread to not block the event loop"""
-    global model, model_loading
+    global model, model_loading, cv2, YOLO
     import asyncio
 
     model_loading = True
     print(f"[Startup] Loading YOLO model from: {MODEL_PATH}")
 
+    def _load_model():
+        """Blocking function to import and load model"""
+        global cv2, YOLO
+        print(f"[Startup] Importing cv2 and ultralytics...")
+        import cv2 as _cv2
+        from ultralytics import YOLO as _YOLO
+        cv2 = _cv2
+        YOLO = _YOLO
+        print(f"[Startup] Imports complete, loading model...")
+        return _YOLO(MODEL_PATH)
+
     try:
         if os.path.exists(MODEL_PATH):
-            # Run the blocking model load in a thread pool
+            # Run the blocking imports and model load in a thread pool
             loop = asyncio.get_event_loop()
-            model = await loop.run_in_executor(None, lambda: YOLO(MODEL_PATH))
+            model = await loop.run_in_executor(None, _load_model)
             print(f"[Startup] Model loaded successfully")
         else:
             print(f"[Startup] WARNING: Model file not found at {MODEL_PATH}")
     except Exception as e:
         print(f"[Startup] ERROR loading model: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         model_loading = False
 
