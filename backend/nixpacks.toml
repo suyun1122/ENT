@@ -6,7 +6,7 @@ aptPkgs = ["libgl1", "libglib2.0-0", "libxcb1", "libx11-6", "libxcb-xinerama0", 
 cmds = [
     "echo '/usr/lib/x86_64-linux-gnu' | sudo tee /etc/ld.so.conf.d/opencv.conf",
     "sudo ldconfig",
-    "ldconfig -p | grep libxcb || true"
+    "chmod +x start.sh"
 ]
 
 [phases.install]
@@ -20,4 +20,4 @@ cmds = [
 ]
 
 [start]
-cmd = "sh -c 'export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && exec /opt/venv/bin/uvicorn main:app --host 0.0.0.0 --port $PORT'"
+cmd = "./start.sh"
