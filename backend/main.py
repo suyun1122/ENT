@@ -74,13 +74,24 @@ async def load_model_background():
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         os.environ["MPLBACKEND"] = "Agg"
 
-        # Preload libxcb to ensure it's available
+        # Preload X11 libraries in dependency order
         try:
             import ctypes
-            ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libxcb.so.1", mode=ctypes.RTLD_GLOBAL)
-            print(f"[Startup] Preloaded libxcb.so.1")
+            lib_path = "/usr/lib/x86_64-linux-gnu"
+            libs_to_load = [
+                "libXau.so.6",
+                "libXdmcp.so.6",
+                "libxcb.so.1",
+                "libX11.so.6",
+            ]
+            for lib in libs_to_load:
+                try:
+                    ctypes.CDLL(f"{lib_path}/{lib}", mode=ctypes.RTLD_GLOBAL)
+                    print(f"[Startup] Preloaded {lib}")
+                except Exception as e:
+                    print(f"[Startup] Could not preload {lib}: {e}")
         except Exception as e:
-            print(f"[Startup] Could not preload libxcb: {e}")
+            print(f"[Startup] Library preload failed: {e}")
 
         print(f"[Startup] Importing cv2 and ultralytics...")
         import cv2 as _cv2
