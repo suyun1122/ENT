@@ -405,11 +405,17 @@ export async function POST(request, { params }) {
 
     // Check if already processing (unless force is true)
     if (processingStatus.has(processingKey) && !force) {
-        return NextResponse.json({
-            status: 'already_processing',
-            videoId,
-            message: 'Surgical analysis is already being processed.'
-        }, { status: 409 });
+        const currentStatus = processingStatus.get(processingKey);
+        // Only block if actively processing (not completed or errored)
+        if (currentStatus.stage !== 'completed' && currentStatus.stage !== 'error') {
+            return NextResponse.json({
+                status: 'already_processing',
+                videoId,
+                message: 'Surgical analysis is already being processed.'
+            }, { status: 409 });
+        }
+        // If completed or errored, clear the status and allow new request
+        processingStatus.delete(processingKey);
     }
 
     // If force refresh AND type is 'all', delete existing cached files
@@ -436,6 +442,69 @@ export async function POST(request, { params }) {
         // Clear processing status if exists
         if (processingStatus.has(processingKey)) {
             processingStatus.delete(processingKey);
+        }
+    }
+
+    // For partial refresh (chapters or soap only), null out that specific part in cache
+    // This ensures polling will wait for new data instead of returning cached data
+    if (type !== 'all') {
+        console.log(`[Surgical Analysis] Partial refresh (${type}) - nullifying cached ${type} data`);
+
+        let existingData = null;
+
+        // Load existing data
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
+            try {
+                const blobInfo = await head(`analysis/${videoId}.json`);
+                if (blobInfo) {
+                    const response = await fetch(blobInfo.url);
+                    existingData = JSON.parse(await response.text());
+                }
+            } catch (error) {
+                console.warn('[Surgical Analysis] No existing data in Blob');
+            }
+        }
+
+        if (!existingData) {
+            const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+            if (fs.existsSync(analysisPath)) {
+                existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+            }
+        }
+
+        if (existingData) {
+            // Null out the specific part being refreshed
+            if (type === 'chapters') {
+                existingData.chapters = null;
+            } else if (type === 'soap') {
+                existingData.operative_note = null;
+            }
+
+            // Save updated data with nullified field
+            if (process.env.BLOB_READ_WRITE_TOKEN) {
+                try {
+                    await del(`analysis/${videoId}.json`);
+                    await put(`analysis/${videoId}.json`, JSON.stringify(existingData, null, 2), {
+                        access: 'public',
+                        contentType: 'application/json',
+                        addRandomSuffix: false
+                    });
+                    console.log(`[Surgical Analysis] Nullified ${type} in Blob cache`);
+                } catch (blobError) {
+                    console.error('[Surgical Analysis] Failed to update Blob:', blobError);
+                }
+            }
+
+            // Also update local file if exists
+            try {
+                const localPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+                if (fs.existsSync(localPath)) {
+                    fs.writeFileSync(localPath, JSON.stringify(existingData, null, 2));
+                    console.log(`[Surgical Analysis] Nullified ${type} in local cache`);
+                }
+            } catch (fsError) {
+                // Ignore - may fail in production
+            }
         }
     }
 
@@ -466,7 +535,9 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
     const processingKey = `${videoId}-${type}`;
 
     try {
+        console.log(`[Surgical Analysis] ========================================`);
         console.log(`[Surgical Analysis] Starting ${type} analysis for video ${videoId}`);
+        console.log(`[Surgical Analysis] Timestamp: ${new Date().toISOString()}`);
 
         processingStatus.set(processingKey, { progress: 10, stage: 'calling_twelvelabs_api' });
 
@@ -484,11 +555,15 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
         }
 
         // Call TwelveLabs API
+        console.log(`[Surgical Analysis] Calling TwelveLabs API... (this typically takes 30s-2min)`);
+        const startTime = Date.now();
         const response = await getTwelveLabsClient().analyze({
             videoId: videoId,
             prompt: prompt,
             temperature: 0.2
         });
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[Surgical Analysis] TwelveLabs API responded in ${elapsed}s`);
 
         processingStatus.set(processingKey, { progress: 60, stage: 'parsing_response' });
 

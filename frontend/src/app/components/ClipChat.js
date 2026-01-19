@@ -35,9 +35,9 @@ function parseMarkdown(text) {
           // Process inline markdown in list items
           item = item.replace(
             /\*\*(.+?)\*\*/g,
-            '<strong class="font-semibold text-emerald-900">$1</strong>'
+            '<strong class="font-semibold text-gray-900">$1</strong>'
           );
-          html += `<li class="text-sm">${item}</li>`;
+          html += `<li class="text-sm text-gray-700">${item}</li>`;
         });
         html += "</ul>";
         listItems = [];
@@ -46,15 +46,15 @@ function parseMarkdown(text) {
 
       // Process headers
       if (line.startsWith("### ")) {
-        html += `<h3 class="text-base font-bold text-emerald-900 mt-3 mb-1">${line.substring(
+        html += `<h3 class="text-base font-bold text-gray-900 mt-3 mb-1">${line.substring(
           4
         )}</h3>`;
       } else if (line.startsWith("## ")) {
-        html += `<h2 class="text-base font-bold text-emerald-900 mt-4 mb-2">${line.substring(
+        html += `<h2 class="text-base font-bold text-gray-900 mt-4 mb-2">${line.substring(
           3
         )}</h2>`;
       } else if (line.startsWith("# ")) {
-        html += `<h1 class="text-lg font-bold text-emerald-900 mt-4 mb-2">${line.substring(
+        html += `<h1 class="text-lg font-bold text-gray-900 mt-4 mb-2">${line.substring(
           2
         )}</h1>`;
       } else if (line.trim() === "") {
@@ -63,10 +63,10 @@ function parseMarkdown(text) {
         // Process inline markdown
         line = line.replace(
           /\*\*(.+?)\*\*/g,
-          '<strong class="font-semibold text-emerald-900">$1</strong>'
+          '<strong class="font-semibold text-gray-900">$1</strong>'
         );
         line = line.replace(/\*([^*]+?)\*/g, '<em class="italic">$1</em>');
-        html += `<div class="mb-1">${line}</div>`;
+        html += `<div class="mb-1 text-gray-700">${line}</div>`;
       }
     }
   }
@@ -77,9 +77,9 @@ function parseMarkdown(text) {
     listItems.forEach((item) => {
       item = item.replace(
         /\*\*(.+?)\*\*/g,
-        '<strong class="font-semibold text-emerald-900">$1</strong>'
+        '<strong class="font-semibold text-gray-900">$1</strong>'
       );
-      html += `<li class="text-sm">${item}</li>`;
+      html += `<li class="text-sm text-gray-700">${item}</li>`;
     });
     html += "</ul>";
   }
@@ -272,35 +272,31 @@ export default function ClipChat({ videoId }) {
   return (
     // Constrain height so chat doesn't expand the page; messages area inside is scrollable
     <div
-      className="flex flex-col rounded-lg transform transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl"
+      className="flex flex-col rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300"
       style={{
         height: "56vh",
         overflow: "hidden",
-        background: "rgba(255,255,255,0.72)",
-        backdropFilter: "blur(8px) saturate(120%)",
-        border: "1px solid rgba(15,23,42,0.06)",
-        boxShadow: "0 8px 30px rgba(2,6,23,0.06)",
+        backgroundColor: "#f4f3f3",
       }}
     >
+      {/* Header */}
       <div
-        className="px-4 py-3 flex items-center justify-between"
-        style={{ borderBottom: "1px solid rgba(15,23,42,0.04)" }}
+        className="px-4 py-3 flex items-center justify-between bg-white"
+        style={{ borderBottom: "1px solid #d9d9d9" }}
       >
         <div className="flex items-center gap-3">
-          {/* robot SVG icon in a glassy badge */}
+          {/* robot SVG icon */}
           <div
-            className="flex items-center justify-center rounded-md"
+            className="flex items-center justify-center rounded-lg"
             style={{
-              width: 44,
-              height: 44,
-              background: "rgba(255,255,255,0.9)",
-              border: "1px solid rgba(15,23,42,0.04)",
-              boxShadow: "0 6px 18px rgba(2,6,23,0.06)",
+              width: 40,
+              height: 40,
+              background: "#1D1C1B",
             }}
           >
             <svg
-              width="24"
-              height="24"
+              width="22"
+              height="22"
               viewBox="0 0 24 24"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
@@ -312,97 +308,65 @@ export default function ClipChat({ videoId }) {
                 width="18"
                 height="14"
                 rx="3"
-                stroke="#064e3b"
+                stroke="white"
                 strokeWidth="1.5"
-                fill="white"
+                fill="none"
               />
-              <circle cx="8.5" cy="10" r="1.2" fill="#064e3b" />
-              <circle cx="15.5" cy="10" r="1.2" fill="#064e3b" />
+              <circle cx="8.5" cy="10" r="1.2" fill="white" />
+              <circle cx="15.5" cy="10" r="1.2" fill="white" />
               <rect
                 x="9"
                 y="13"
                 width="6"
                 height="1.2"
                 rx="0.6"
-                fill="#94d3a2"
+                fill="#bdbcbb"
               />
-              <rect x="11" y="2.5" width="2" height="2" rx="1" fill="#94d3a2" />
+              <rect x="11" y="2.5" width="2" height="2" rx="1" fill="#bdbcbb" />
             </svg>
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-slate-800">
-              {AGENT_NAME} — Surgical Video Analyst
+            <div className="text-sm font-semibold text-gray-900">
+              {AGENT_NAME}
             </div>
-            <div className="text-xs text-slate-500">
-              Ask about phases, tools, events, or generate reports
+            <div className="text-xs text-gray-500">
+              Surgical Video Analyst
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Connected badge */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
-              borderRadius: 999,
-              background: "rgba(6,78,59,0.06)",
-              border: "1px solid rgba(6,78,59,0.08)",
-            }}
-          >
+          <div className="flex items-center gap-2 px-2 py-1 rounded-full outline outline-1 outline-offset-[-1px] outline-gray-300">
             <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 8,
-                background: "#84cc16",
-                boxShadow: "0 4px 10px rgba(132,204,22,0.14)",
-              }}
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: "#60e21b" }}
             />
-            <div style={{ fontSize: 12, color: "#14532d", fontWeight: 600 }}>
-              Connected
-            </div>
+            <span className="text-xs text-gray-700 font-normal">Connected</span>
           </div>
 
           {/* TwelveLabs badge */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
-              borderRadius: 12,
-              background: "rgba(255,255,255,0.8)",
-              border: "1px solid rgba(15,23,42,0.04)",
-              boxShadow: "0 6px 18px rgba(2,6,23,0.04)",
-            }}
-          >
+          <div className="flex items-center gap-2 px-2 py-1 rounded-lg outline outline-1 outline-offset-[-1px] outline-gray-300 bg-white">
             <img
               src="/twelvelabs.png"
               alt="TwelveLabs"
-              style={{ width: 46, height: "auto" }}
+              style={{ width: 40, height: "auto" }}
             />
             <a
               href="https://www.twelvelabs.com"
               target="_blank"
               rel="noopener noreferrer"
-              style={{
-                fontSize: 12,
-                color: "#064e3b",
-                fontWeight: 600,
-                textDecoration: "none",
-              }}
+              className="text-xs text-gray-700 font-normal hover:text-gray-900 transition-colors"
             >
-              Powered by TwelveLabs Pegasus
+              Powered by Pegasus
             </a>
           </div>
         </div>
       </div>
 
-      <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages */}
+      <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
         {chatHistory.map((m, i) => (
           <div
             key={i}
@@ -416,31 +380,31 @@ export default function ClipChat({ videoId }) {
               }`}
             >
               <div
-                className={`rounded-lg px-4 py-2 ${
+                className={`rounded-2xl px-4 py-3 ${
                   m.role === "user"
-                    ? "bg-white text-slate-800 border border-slate-100 text-left"
-                    : "bg-gradient-to-r from-emerald-100 to-emerald-50 text-emerald-900 text-left"
-                } shadow-sm`}
-                style={{ animation: "fadeIn .18s ease", maxWidth: "92%" }}
+                    ? "bg-[#1D1C1B] text-white"
+                    : "bg-white text-gray-700 outline outline-1 outline-offset-[-1px] outline-gray-300"
+                }`}
+                style={{ maxWidth: "92%" }}
               >
-                <div className="text-xs opacity-80">
+                <div className={`text-xs mb-1 ${m.role === "user" ? "text-gray-400" : "text-gray-500"}`}>
                   {m.role === "user" ? "You" : AGENT_NAME}
                 </div>
                 {m.typing ? (
-                  <div className="mt-1 text-sm leading-snug">
+                  <div className="text-sm leading-snug">
                     <TypingDots />
                   </div>
                 ) : m.role === "assistant" ? (
                   <div
-                    className="mt-1 text-sm leading-relaxed"
+                    className="text-sm leading-relaxed"
                     dangerouslySetInnerHTML={{ __html: parseMarkdown(m.text) }}
                   />
                 ) : (
-                  <div className="mt-1 text-sm leading-snug whitespace-pre-wrap">
+                  <div className="text-sm leading-snug whitespace-pre-wrap">
                     {m.text}
                   </div>
                 )}
-                <div className="mt-1 text-[10px] opacity-60 text-right">
+                <div className={`mt-2 text-[10px] text-right ${m.role === "user" ? "text-gray-400" : "text-gray-400"}`}>
                   {formatDate(m.date)}
                 </div>
               </div>
@@ -449,9 +413,10 @@ export default function ClipChat({ videoId }) {
         ))}
       </div>
 
+      {/* Input */}
       <div
-        className="px-4 py-3 border-t bg-white flex items-center gap-3"
-        style={{ borderTop: "1px solid rgba(15,23,42,0.04)" }}
+        className="px-4 py-3 bg-white flex items-center gap-3"
+        style={{ borderTop: "1px solid #d9d9d9" }}
       >
         <div className="flex-1">
           <input
@@ -463,14 +428,8 @@ export default function ClipChat({ videoId }) {
                 handleSendText(input);
               }
             }}
-            placeholder="Ask about surgical phases, tools, critical events, or request an operative report..."
-            className="w-full rounded-full border px-4 py-2 text-sm focus:outline-none"
-            style={{
-              border: "1px solid rgba(15,23,42,0.04)",
-              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-              transition: "box-shadow 120ms ease",
-              outline: "none",
-            }}
+            placeholder="Ask about surgical phases, tools, or request reports..."
+            className="w-full rounded-full px-4 py-2 text-sm focus:outline-none outline outline-1 outline-offset-[-1px] outline-gray-300 bg-gray-50"
           />
         </div>
 
@@ -483,22 +442,11 @@ export default function ClipChat({ videoId }) {
                 else startRecording();
               }
             }}
-            className={`cursor-pointer p-2 rounded-full transform transition-transform duration-150 ${
-              isRecording ? "scale-95" : "hover:scale-105"
-            }`}
-            style={
+            className={`p-2 rounded-full transition-colors ${
               isRecording
-                ? {
-                    background: "#84cc16",
-                    color: "#08300b",
-                    boxShadow: "0 6px 18px rgba(132,204,22,0.12)",
-                  }
-                : {
-                    background: "white",
-                    color: "#064e3b",
-                    border: "1px solid rgba(6,78,59,0.06)",
-                  }
-            }
+                ? "bg-[#1D1C1B] text-white"
+                : "bg-white text-gray-700 outline outline-1 outline-offset-[-1px] outline-gray-300 hover:bg-gray-50"
+            }`}
             title={
               recognitionAvailable
                 ? isRecording
@@ -509,7 +457,7 @@ export default function ClipChat({ videoId }) {
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-6 w-6"
+              className="h-5 w-5"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -524,11 +472,7 @@ export default function ClipChat({ videoId }) {
           <button
             type="button"
             onClick={() => handleSendText(input)}
-            className="px-4 py-2 rounded-full text-white text-sm shadow transform transition-transform duration-150 hover:scale-105 active:scale-95"
-            style={{
-              background: "#84cc16",
-              border: "1px solid rgba(6,78,59,0.08)",
-            }}
+            className="h-10 px-4 py-2 rounded-2xl text-white text-sm bg-[#1D1C1B] hover:bg-gray-800 transition-colors"
           >
             Send
           </button>
@@ -542,15 +486,15 @@ function TypingDots() {
   return (
     <div className="flex items-center gap-1">
       <span
-        className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-bounce"
+        className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
         style={{ animationDelay: "0s" }}
       />
       <span
-        className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-bounce"
+        className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
         style={{ animationDelay: "0.12s" }}
       />
       <span
-        className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-bounce"
+        className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"
         style={{ animationDelay: "0.24s" }}
       />
     </div>

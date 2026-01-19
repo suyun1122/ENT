@@ -2,6 +2,7 @@
 
 import ClipBento from "@/app/components/ClipBento";
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 
 export default function ClipDetailPage({ params }) {
 
@@ -260,172 +261,166 @@ export default function ClipDetailPage({ params }) {
     }
 
     const displayDate = formatClipDate(clipData);
-    const tags = getTags(cachedData);
 
     return (
-        <div className="p-4">
-            {/* Header: title, date, tags */}
-            <div className="rounded-lg p-4 mb-4 bg-white/5 backdrop-blur-md ring-1 ring-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex-1">
-                    <h1 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 via-emerald-500 to-lime-600">{clipData ? clipData['filename'] : 'Video Title'}</h1>
-                    {displayDate ? (
-                        <p className="mt-1 text-sm text-emerald"><span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 via-emerald-500 to-lime-600 font-medium">Recorded: {displayDate}</span></p>
-                    ) : null}
-                </div>
+        <div className="min-h-screen" style={{ backgroundColor: '#f4f3f3' }}>
+            <div className="container mx-auto px-4 py-6">
+                {/* Back Navigation */}
+                <Link
+                    href="/"
+                    className="inline-flex items-center gap-1 text-gray-700 text-xs font-normal mb-6 hover:text-gray-900 transition-colors"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to Library
+                </Link>
 
-                <div className="flex-shrink-0 flex items-center gap-3">
-                    {tags && tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                            {tags.map((t, i) => (
-                                <span key={i} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 via-emerald-500 to-lime-600 ring-1 ring-emerald-200/20">
-                                    #{t}
-                                </span>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-sm italic text-transparent bg-clip-text bg-gradient-to-r from-emerald-700 via-emerald-500 to-lime-600">No tags</div>
+                {/* Header: title and date */}
+                <div className="mb-6">
+                    <h1 className="text-2xl font-bold text-gray-800">
+                        {clipData ? clipData['filename']?.replace(/\.mp4$/i, '') : 'Loading...'}
+                    </h1>
+                    {displayDate && (
+                        <p className="mt-1 text-sm text-gray-500">
+                            Recorded: {displayDate}
+                        </p>
                     )}
                 </div>
-            </div>
 
-            {/* Error Display */}
-            {error && (
-                <div className={`mt-4 rounded-lg p-6 border ${
-                    error.type === 'video_not_uploaded'
-                        ? 'bg-blue-50 border-blue-200'
-                        : error.type === 'video_not_ready'
-                        ? 'bg-amber-50 border-amber-200'
-                        : 'bg-red-50 border-red-200'
-                }`}>
-                    <div className="flex items-start">
-                        <div className="flex-shrink-0">
-                            {error.type === 'video_not_uploaded' ? (
-                                <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                                </svg>
-                            ) : error.type === 'video_not_ready' ? (
-                                <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            ) : (
-                                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            )}
-                        </div>
-                        <div className="ml-3 flex-1">
-                            <h3 className={`text-lg font-medium ${
-                                error.type === 'video_not_uploaded'
-                                    ? 'text-blue-800'
-                                    : error.type === 'video_not_ready'
-                                    ? 'text-amber-800'
-                                    : 'text-red-800'
-                            }`}>
-                                {error.type === 'video_not_uploaded'
-                                    ? 'Video Being Uploaded'
-                                    : error.type === 'video_not_ready'
-                                    ? 'Video Still Processing'
-                                    : 'Analysis Error'
-                                }
-                            </h3>
-                            <p className={`mt-1 text-sm ${
-                                error.type === 'video_not_uploaded'
-                                    ? 'text-blue-700'
-                                    : error.type === 'video_not_ready'
-                                    ? 'text-amber-700'
-                                    : 'text-red-700'
-                            }`}>
-                                {error.message}
-                            </p>
+                {/* Error Display */}
+                {error && (
+                    <div className={`mb-6 rounded-[20px] p-6 outline outline-1 outline-offset-[-1px] ${
+                        error.type === 'video_not_uploaded'
+                            ? 'bg-blue-50 outline-blue-200'
+                            : error.type === 'video_not_ready'
+                            ? 'bg-amber-50 outline-amber-200'
+                            : 'bg-red-50 outline-red-200'
+                    }`}>
+                        <div className="flex items-start">
+                            <div className="flex-shrink-0">
+                                {error.type === 'video_not_uploaded' ? (
+                                    <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                                    </svg>
+                                ) : error.type === 'video_not_ready' ? (
+                                    <svg className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div className="ml-3 flex-1">
+                                <h3 className={`text-lg font-medium ${
+                                    error.type === 'video_not_uploaded'
+                                        ? 'text-blue-800'
+                                        : error.type === 'video_not_ready'
+                                        ? 'text-amber-800'
+                                        : 'text-red-800'
+                                }`}>
+                                    {error.type === 'video_not_uploaded'
+                                        ? 'Video Being Uploaded'
+                                        : error.type === 'video_not_ready'
+                                        ? 'Video Still Processing'
+                                        : 'Analysis Error'
+                                    }
+                                </h3>
+                                <p className={`mt-1 text-sm ${
+                                    error.type === 'video_not_uploaded'
+                                        ? 'text-blue-700'
+                                        : error.type === 'video_not_ready'
+                                        ? 'text-amber-700'
+                                        : 'text-red-700'
+                                }`}>
+                                    {error.message}
+                                </p>
 
-                            {/* Auto-retry status for upload/processing errors */}
-                            {(error.type === 'video_not_uploaded' || error.type === 'video_not_ready') && (
-                                <div className="mt-3">
-                                    {isAutoRetrying ? (
-                                        <div className="flex items-center text-sm text-gray-600">
-                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Auto-checking every 5 seconds... (Attempt {retryCount}/10)
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-gray-600">
-                                            We'll automatically check when the video is ready.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            <div className="mt-4 flex gap-3">
-                                <button
-                                    onClick={retryAnalysis}
-                                    disabled={isRetrying || isAutoRetrying}
-                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isRetrying ? (
-                                        <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Retrying...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg className="-ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                            </svg>
-                                            Try Now
-                                        </>
-                                    )}
-                                </button>
-
+                                {/* Auto-retry status for upload/processing errors */}
                                 {(error.type === 'video_not_uploaded' || error.type === 'video_not_ready') && (
-                                    <>
-                                        {!isAutoRetrying ? (
-                                            <button
-                                                onClick={startAutoRetry}
-                                                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                                            >
-                                                <svg className="-ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <div className="mt-3">
+                                        {isAutoRetrying ? (
+                                            <div className="flex items-center text-sm text-gray-600">
+                                                <div className="w-4 h-4 rounded-full border-2 border-solid border-gray-500 border-t-transparent animate-spin mr-2"></div>
+                                                Auto-checking every 5 seconds... (Attempt {retryCount}/10)
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-gray-600">
+                                                We will automatically check when the video is ready.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="mt-4 flex gap-3">
+                                    <button
+                                        onClick={retryAnalysis}
+                                        disabled={isRetrying || isAutoRetrying}
+                                        className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 bg-[#1D1C1B] text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        {isRetrying ? (
+                                            <>
+                                                <div className="w-4 h-4 rounded-full border-2 border-solid border-white border-t-transparent animate-spin"></div>
+                                                Retrying...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                                 </svg>
-                                                Auto-Retry
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={stopAutoRetry}
-                                                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                                            >
-                                                <svg className="-ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                                Stop Auto-Retry
-                                            </button>
+                                                Try Now
+                                            </>
                                         )}
-                                    </>
-                                )}
+                                    </button>
+
+                                    {(error.type === 'video_not_uploaded' || error.type === 'video_not_ready') && (
+                                        <>
+                                            {!isAutoRetrying ? (
+                                                <button
+                                                    onClick={startAutoRetry}
+                                                    className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                    </svg>
+                                                    Auto-Retry
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={stopAutoRetry}
+                                                    className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                    Stop Auto-Retry
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {/* ClipBento Component with Video, Chat, and Forensics */}
-            <div className="mt-4">
-                {clipData ? (
-                    <ClipBento
-                        clipData={clipData}
-                        videoId={clipData['pegasusId']}
-                        initialAnalysisData={cachedData?.data}
-                    />
-                ) : (
-                    <div className="absolute inset-0 top-16 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-slate-100 z-40">
-                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-emerald-500 mb-6"></div>
-                        <p className="text-gray-600 font-medium text-lg">Loading clip data...</p>
-                    </div>
                 )}
+
+                {/* ClipBento Component with Video, Chat, and Forensics */}
+                <div>
+                    {clipData ? (
+                        <ClipBento
+                            clipData={clipData}
+                            videoId={clipData['pegasusId']}
+                            initialAnalysisData={cachedData?.data}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <div className="w-10 h-10 rounded-full border-2 border-solid border-gray-500 border-t-transparent animate-spin mb-6"></div>
+                            <p className="text-gray-600 font-normal text-base">Loading clip data...</p>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )

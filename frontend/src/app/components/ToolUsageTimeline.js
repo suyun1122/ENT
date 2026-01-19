@@ -12,15 +12,15 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
   const [zoom, setZoom] = useState(1);
   const [scrollPosition, setScrollPosition] = useState(0);
 
-  // Tool color mapping
+  // Tool color mapping - distinct colors for each tool
   const TOOL_COLORS = {
-    'Bipolar': '#FF6B6B',      // Red
-    'Clipper': '#4ECDC4',      // Teal
-    'Grasper': '#FFE66D',      // Yellow
-    'Hook': '#95E1D3',         // Mint
-    'Irrigator': '#F38181',    // Pink
-    'Scissors': '#AA96DA',     // Purple
-    'Specimen Bag': '#FCBAD3'  // Light Pink
+    'Bipolar': '#E53935',      // Red
+    'Clipper': '#00ACC1',      // Cyan/Teal
+    'Grasper': '#FDD835',      // Yellow
+    'Hook': '#43A047',         // Green
+    'Irrigator': '#1E88E5',    // Blue (changed from pink to be distinct from Bipolar)
+    'Scissors': '#8E24AA',     // Purple
+    'Specimen Bag': '#F48FB1'  // Pink
   };
 
   // Merge consecutive detections into segments
@@ -76,7 +76,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
 
   if (!detectionData || !detectionData.detections || !videoDuration) {
     return (
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-8 text-center">
+      <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-8 text-center">
         <p className="text-gray-500">No tool detection data available</p>
       </div>
     );
@@ -134,7 +134,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">Tool Usage Timeline</h3>
         <div className="flex items-center space-x-2">
@@ -159,13 +159,15 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
       </div>
 
       {/* Two-column layout: Labels + Timeline */}
-      <div className="flex gap-4">
+      <div className="flex">
         {/* Left: Tool Labels (Fixed) */}
-        <div className="flex-shrink-0" style={{ width: '160px' }}>
-          <div className="space-y-3 pt-20">
-            <div className="text-xs font-semibold text-gray-700 bg-gray-50 px-2 py-1 rounded mb-4">
-              Surgical Tools
-            </div>
+        <div className="flex-shrink-0 pr-4" style={{ width: '140px' }}>
+          {/* Header spacer to align with time markers */}
+          <div className="h-14 flex items-end pb-2">
+            <span className="text-xs font-semibold text-gray-700">Surgical Tools</span>
+          </div>
+          {/* Tool labels - aligned with timeline rows */}
+          <div className="space-y-3">
             {toolNames.map((toolName) => {
               const segments = toolSegments[toolName] || [];
               const color = TOOL_COLORS[toolName] || '#CCCCCC';
@@ -175,7 +177,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
               return (
                 <div key={toolName} className="flex items-center h-8">
                   <div
-                    className="w-4 h-4 rounded mr-2 flex-shrink-0"
+                    className="w-3 h-3 rounded mr-2 flex-shrink-0"
                     style={{ backgroundColor: color }}
                   ></div>
                   <span className="text-sm font-medium text-gray-700 truncate" title={toolName}>
@@ -191,27 +193,27 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
         <div className="flex-1 overflow-x-auto border-l border-gray-200 pl-4" style={{ maxHeight: '400px' }}>
           <div
             ref={timelineRef}
-            className="relative pt-8"
+            className="relative"
             style={{ width: `${timelineWidth}px`, minWidth: '100%' }}
           >
-            {/* Time axis header */}
-            <div className="absolute -top-2 left-0 text-xs font-semibold text-gray-600 mb-2">
-              Time
-            </div>
+            {/* Time markers header */}
+            <div className="relative h-14 mb-0">
+              {/* Time label */}
+              <div className="absolute top-0 left-0 text-xs font-semibold text-gray-600">
+                Time
+              </div>
 
-            {/* Time markers */}
-            <div className="relative h-8 mb-6">
               {/* Horizontal timeline bar */}
-              <div className="absolute bottom-0 left-0 h-0.5 bg-gray-300" style={{ width: `${videoDuration * pixelsPerSecond}px` }}></div>
+              <div className="absolute bottom-2 left-0 h-0.5 bg-gray-300" style={{ width: `${videoDuration * pixelsPerSecond}px` }}></div>
 
               {/* Time markers */}
               {timeMarkers.map((time) => (
                 <div
                   key={time}
-                  className="absolute bottom-0"
+                  className="absolute bottom-2"
                   style={{ left: `${time * pixelsPerSecond}px` }}
                 >
-                  <span className="absolute -top-6 -translate-x-1/2 left-0 text-xs text-gray-700 whitespace-nowrap font-medium">
+                  <span className="absolute -top-4 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
                     {formatTime(time)}
                   </span>
                   <div className="absolute bottom-0 left-0 w-px h-2 bg-gray-400"></div>
@@ -220,17 +222,17 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
 
               {/* End marker */}
               <div
-                className="absolute bottom-0"
+                className="absolute bottom-2"
                 style={{ left: `${videoDuration * pixelsPerSecond}px` }}
               >
-                <span className="absolute -top-6 -translate-x-1/2 left-0 text-xs text-gray-900 font-bold whitespace-nowrap">
+                <span className="absolute -top-4 -translate-x-1/2 left-0 text-xs text-gray-700 font-medium whitespace-nowrap">
                   {formatTime(videoDuration)}
                 </span>
-                <div className="absolute bottom-0 left-0 w-0.5 h-3 bg-gray-900"></div>
+                <div className="absolute bottom-0 left-0 w-0.5 h-3 bg-gray-700"></div>
               </div>
             </div>
 
-            {/* Tool lines */}
+            {/* Tool lines - aligned with labels */}
             <div className="space-y-3">
               {toolNames.map((toolName) => {
                 const segments = toolSegments[toolName] || [];
@@ -242,16 +244,16 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
                   <div key={toolName} className="relative h-8">
                     {/* Timeline background line */}
                     <div
-                      className="absolute top-1/2 left-0 h-2 transform -translate-y-1/2 rounded-full"
+                      className="absolute top-1/2 left-0 h-1.5 transform -translate-y-1/2 rounded-full"
                       style={{
                         width: `${videoDuration * pixelsPerSecond}px`,
-                        backgroundColor: '#F3F4F6'
+                        backgroundColor: '#E5E7EB'
                       }}
                     ></div>
 
                     {/* Segment bars */}
                     {segments.map((segment, segIndex) => {
-                      const segmentWidth = Math.max((segment.end - segment.start) * pixelsPerSecond, 8);
+                      const segmentWidth = Math.max((segment.end - segment.start) * pixelsPerSecond, 6);
                       return (
                         <div
                           key={segIndex}
@@ -260,11 +262,11 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
                           style={{
                             left: `${segment.start * pixelsPerSecond}px`,
                             width: `${segmentWidth}px`,
-                            height: '20px',
+                            height: '18px',
                             backgroundColor: color,
-                            borderRadius: '4px',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
-                            opacity: 0.7 + segment.avgConfidence * 0.3
+                            borderRadius: '3px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                            opacity: 0.85 + segment.avgConfidence * 0.15
                           }}
                           title={`${toolName}: ${formatTime(segment.start)} - ${formatTime(segment.end)} (${segment.count} detections, avg ${(segment.avgConfidence * 100).toFixed(0)}% confidence)`}
                         />
