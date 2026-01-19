@@ -24,10 +24,13 @@ function cleanupStaleProcessing() {
 // Check if processing status exists in Blob
 async function checkProcessingStatus(videoId) {
     try {
+        const prefix = `processing-status/${videoId}`;
+        console.log(`[Detection] Checking processing status with prefix: ${prefix}`);
         const { blobs } = await list({
-            prefix: `processing-status/${videoId}`,
+            prefix: prefix,
             token: process.env.BLOB_READ_WRITE_TOKEN
         });
+        console.log(`[Detection] Found ${blobs.length} processing-status blobs for ${videoId}`);
         if (blobs.length > 0) {
             const response = await fetch(blobs[0].url);
             return await response.json();
@@ -108,16 +111,21 @@ export async function GET(request, { params }) {
                     const response = await fetch(blobUrl);
                     const detectionData = await response.json();
 
+                    // Proactively clear any stale processing-status (defensive cleanup)
+                    await clearProcessingStatus(videoId);
+
                     console.log(`[Detection GET] Loaded from Vercel Blob: ${videoId}`);
                     return NextResponse.json({
                         status: 'completed',
                         videoId: videoId,
                         data: detectionData
                     });
+                } else {
+                    console.log(`[Detection GET] No blobs found with prefix: ${blobPrefix}`);
                 }
             } catch (blobError) {
-                // Blob not found - this is normal for new videos
-                console.log(`[Detection GET] Blob error for ${videoId}: ${blobError.message}`);
+                // Blob error - log full details
+                console.error(`[Detection GET] Blob error for ${videoId}:`, blobError);
             }
         }
 
@@ -128,6 +136,8 @@ export async function GET(request, { params }) {
         if (fs.existsSync(detectionPath)) {
             try {
                 const detectionData = JSON.parse(fs.readFileSync(detectionPath, 'utf-8'));
+                // Proactively clear any stale processing-status (defensive cleanup)
+                await clearProcessingStatus(videoId);
                 console.log(`[Detection GET] Loaded from local file system: ${videoId}`);
                 return NextResponse.json({
                     status: 'completed',
