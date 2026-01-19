@@ -285,7 +285,7 @@ export default function ClipChat({ videoId }) {
         style={{ borderBottom: "1px solid #d9d9d9" }}
       >
         <div className="flex items-center gap-3">
-          {/* robot SVG icon - no background */}
+          {/* Medical doctor icon */}
           <svg
             width="32"
             height="32"
@@ -295,28 +295,31 @@ export default function ClipChat({ videoId }) {
             aria-hidden
             className="text-gray-700 flex-shrink-0"
           >
-            <rect
-              x="3"
-              y="4"
-              width="18"
-              height="14"
-              rx="3"
+            {/* Head */}
+            <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            {/* Body */}
+            <path
+              d="M4 21v-2a4 4 0 014-4h8a4 4 0 014 4v2"
               stroke="currentColor"
               strokeWidth="1.5"
+              strokeLinecap="round"
               fill="none"
             />
-            <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
-            <circle cx="15.5" cy="10" r="1.5" fill="currentColor" />
-            <rect
-              x="9"
-              y="13"
-              width="6"
-              height="1.5"
-              rx="0.75"
-              fill="currentColor"
-              opacity="0.5"
+            {/* Medical cross on body */}
+            <path
+              d="M12 16v4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
             />
-            <rect x="11" y="2" width="2" height="2.5" rx="1" fill="currentColor" opacity="0.5" />
+            <path
+              d="M10 18h4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            {/* Head mirror/reflector */}
+            <circle cx="12" cy="4" r="1.5" stroke="currentColor" strokeWidth="1" fill="none" />
           </svg>
 
           <div>
