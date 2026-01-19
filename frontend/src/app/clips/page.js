@@ -3,9 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import ClipSort from '../components/ClipSort';
 import UploadVideo from '../components/UploadVideo';
-import {
-  CpuChipIcon,
-} from '@heroicons/react/24/outline';
 import ClipCard from '../components/ClipCard';
 import { useUpload } from '../contexts/UploadContext';
 

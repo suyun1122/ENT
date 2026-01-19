@@ -1,21 +1,13 @@
 'use client';
 
+import { TOOL_COLORS } from '../constants/toolColors';
+
 /**
  * ToolUsageStatistics Component
  *
  * Displays statistics about tool detections
  */
 export default function ToolUsageStatistics({ detectionData }) {
-  // Tool color mapping - must match ToolUsageTimeline.js
-  const TOOL_COLORS = {
-    'Bipolar': '#E53935',      // Red
-    'Clipper': '#00ACC1',      // Cyan/Teal
-    'Grasper': '#FDD835',      // Yellow
-    'Hook': '#43A047',         // Green
-    'Irrigator': '#1E88E5',    // Blue
-    'Scissors': '#8E24AA',     // Purple
-    'Specimen Bag': '#F48FB1'  // Pink
-  };
 
   if (!detectionData || !detectionData.detections) {
     return (

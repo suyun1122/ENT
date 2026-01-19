@@ -4,7 +4,8 @@
       "Bash(done)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.twelvelabs.io)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(ls:*)"
     ]
   }
 }

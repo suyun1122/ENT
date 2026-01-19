@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useState } from 'react';
+import { TOOL_COLORS } from '../constants/toolColors';
 
 /**
  * ToolUsageTimeline Component
@@ -10,18 +11,6 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 export default function ToolUsageTimeline({ detectionData, videoDuration, onSeekTo }) {
   const timelineRef = useRef(null);
   const [zoom, setZoom] = useState(1);
-  const [scrollPosition, setScrollPosition] = useState(0);
-
-  // Tool color mapping - distinct colors for each tool
-  const TOOL_COLORS = {
-    'Bipolar': '#E53935',      // Red
-    'Clipper': '#00ACC1',      // Cyan/Teal
-    'Grasper': '#FDD835',      // Yellow
-    'Hook': '#43A047',         // Green
-    'Irrigator': '#1E88E5',    // Blue (changed from pink to be distinct from Bipolar)
-    'Scissors': '#8E24AA',     // Purple
-    'Specimen Bag': '#F48FB1'  // Pink
-  };
 
   // Merge consecutive detections into segments
   const mergeIntoSegments = (detections, gapThreshold = 3) => {

@@ -20,8 +20,9 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "NVIDIA VSS + Twelve Labs Manufacturing Automation",
-  description: "AI-powered video surveillance and analytics for manufacturing automation",
+  title: "Surgical Video Intelligence",
+  description:
+    "AI-powered video surveillance and analytics for surgical procedures",
 };
 
 export default function RootLayout({ children }) {

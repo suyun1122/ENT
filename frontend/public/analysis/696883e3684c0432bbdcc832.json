@@ -1,0 +1,62 @@
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Anesthesia & Positioning",
+      "start_time": 0,
+      "end_time": 165,
+      "chapter_summary": "The patient was positioned supine with a shoulder roll elevating the right shoulder and head turned to the left to expose the temporal-parietal area. A circular bone flap was elevated using a single burr hole, exposing the underlying relaxed dura."
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Surgical Approach & Incision",
+      "start_time": 165,
+      "end_time": 330,
+      "chapter_summary": "A craniotomy was performed to access the brain, and the dura was opened using scissors to reveal the brain tissue underneath. The surgical corridor was optimized to minimize shear forces on the primary motor and sensory cortex."
+    },
+    {
+      "chapter_number": 3,
+      "chapter_title": "Exposure & Dissection",
+      "start_time": 330,
+      "end_time": 495,
+      "chapter_summary": "The tumor was exposed and dissected from the surrounding brain tissue using surgical instruments. Sodium fluorescein combined with computer navigation was used to confirm the tumor's location and ensure complete resection."
+    },
+    {
+      "chapter_number": 4,
+      "chapter_title": "Main Procedure",
+      "start_time": 495,
+      "end_time": 583,
+      "chapter_summary": "The tumor was removed in one piece. Additional suspicious areas for residual tumor were explored and removed. Hydrogen peroxide-soaked cotton balls were applied to the resection site for hemostasis and destruction of neoplastic cells."
+    },
+    {
+      "chapter_number": 5,
+      "chapter_title": "Hemostasis & Inspection",
+      "start_time": 583,
+      "end_time": 588,
+      "chapter_summary": "The cavity was covered with a hemostatic agent, and the dura was re-approximated and duroplasty was completed."
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Closure",
+      "start_time": 588,
+      "end_time": 606,
+      "chapter_summary": "The bone flap was re-approximated, and the border between the bone flap and the cranium was covered with synthetic material for a better cosmetic result."
+    },
+    {
+      "chapter_number": 7,
+      "chapter_title": "Postoperative Care Preparation",
+      "start_time": 606,
+      "end_time": 658,
+      "chapter_summary": "The patient had no neurological deficit post-surgery and was discharged home. Post-operative MRI scans showed no radiographic evidence of residual or recurrent tumor."
+    }
+  ],
+  "operative_note": {
+    "title": "Brain Tumor Resection",
+    "SOAP": {
+      "Subjective": "I performed a brain tumor resection on a 20-plus year old patient who presented with several weeks history of headache, progressive weakness on the left side of the body, and difficulty with gait and balance.",
+      "Objective": "I identified a large mass at the temporo-parietal junction with significant local mass effect and vasogenic edema. I observed the patient positioned supine with shoulder roll elevating the right shoulder and head comfortably turned to the left. I used computer navigation and neurophysiological monitoring with brain mapping to localize the tumor and plan the incision. I performed an incision along a plane bisecting the anterior and posterior poles of the tumor. I observed the tumor's distinction from normal brain tissue upon opening the dura. I used sodium fluorescein guided microscopy combined with computer navigation to confirm the tumor's location. I assessed the initial resection of the tumor and identified a suspicious area for residual tumor in the blind corner. I performed additional exploration and removal of the tumor in this area.",
+      "Assessment": "I assessed the procedure as successful with the tumor seemingly removed in one piece in a gross total fashion. I observed no injury to the surrounding brain during the additional exploration and removal of the suspicious area. Postoperative MRI scans showed no radiographic evidence of residual or recurrent tumor.",
+      "Plan": "I closed the wound with duroplasty and re-approximated the bone flap. I covered the border between the bone flap and the cranium with synthetic agent to achieve a better cosmetic result. I used hydrogen peroxide solution and hemostatic agents over the resection cavity for both destruction of neoplastic cells and hemostasis. The patient had no neurological deficit and was discharged home."
+    }
+  }
+}

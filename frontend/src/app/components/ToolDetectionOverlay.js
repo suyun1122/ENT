@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { EyeIcon, EyeSlashIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { TOOL_COLORS } from '../constants/toolColors';
 
 /**
  * ToolDetectionOverlay Component
@@ -18,17 +19,6 @@ export default function ToolDetectionOverlay({
   const canvasRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [currentDetections, setCurrentDetections] = useState([]);
-
-  // Tool color mapping - must match other components
-  const TOOL_COLORS = {
-    'Bipolar': '#E53935',      // Red
-    'Clipper': '#00ACC1',      // Cyan/Teal
-    'Grasper': '#FDD835',      // Yellow
-    'Hook': '#43A047',         // Green
-    'Irrigator': '#1E88E5',    // Blue
-    'Scissors': '#8E24AA',     // Purple
-    'Specimen Bag': '#F48FB1'  // Pink
-  };
 
   // Update canvas dimensions when video size changes
   useEffect(() => {
