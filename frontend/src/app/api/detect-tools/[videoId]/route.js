@@ -89,7 +89,51 @@ export async function GET(request, { params }) {
             }
         }
 
-        // 3. Check in-memory processing status (works within same serverless instance)
+        // 3. Check Railway backend for processing status (Railway keeps status in memory)
+        if (TOOL_DETECTION_BACKEND_URL) {
+            try {
+                console.log(`[Detection GET] Checking Railway status for ${videoId}`);
+                const railwayResponse = await fetch(`${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (railwayResponse.ok) {
+                    const railwayStatus = await railwayResponse.json();
+                    console.log(`[Detection GET] Railway status:`, railwayStatus);
+
+                    if (railwayStatus.status === 'processing') {
+                        return NextResponse.json({
+                            status: 'processing',
+                            videoId: videoId,
+                            progress: railwayStatus.progress || 0,
+                            stage: railwayStatus.stage || 'processing',
+                            current_frame: railwayStatus.current_frame || 0,
+                            total_frames: railwayStatus.total_frames || 0,
+                            processed_frames: railwayStatus.processed_frames || 0,
+                            message: 'Tool detection is currently in progress'
+                        });
+                    } else if (railwayStatus.status === 'completed' && railwayStatus.data) {
+                        // Railway has completed results but they haven't been uploaded to Blob yet
+                        return NextResponse.json({
+                            status: 'completed',
+                            videoId: videoId,
+                            data: railwayStatus.data
+                        });
+                    } else if (railwayStatus.status === 'error') {
+                        return NextResponse.json({
+                            status: 'error',
+                            videoId: videoId,
+                            message: railwayStatus.error || 'Detection failed'
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log(`[Detection GET] Could not check Railway status: ${e.message}`);
+            }
+        }
+
+        // 4. Check in-memory processing status (fallback for same serverless instance)
         if (processingVideos.has(videoId)) {
             const processingInfo = processingVideos.get(videoId);
             const elapsedSeconds = Math.floor((Date.now() - processingInfo.startTime) / 1000);
@@ -103,7 +147,7 @@ export async function GET(request, { params }) {
             });
         }
 
-        // 4. No results found
+        // 5. No results found
         console.log(`[Detection GET] No results found for ${videoId}`);
         return NextResponse.json({
             status: 'not_found',
