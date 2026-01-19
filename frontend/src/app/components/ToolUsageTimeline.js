@@ -161,13 +161,9 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
       {/* Two-column layout: Labels + Timeline */}
       <div className="flex">
         {/* Left: Tool Labels (Fixed) */}
-        <div className="flex-shrink-0 pr-4" style={{ width: '140px' }}>
-          {/* Header spacer to align with time markers */}
-          <div className="h-14 flex items-end pb-2">
-            <span className="text-xs font-semibold text-gray-700">Surgical Tools</span>
-          </div>
-          {/* Tool labels - aligned with timeline rows */}
-          <div className="space-y-3">
+        <div className="flex-shrink-0 pr-4" style={{ width: '120px' }}>
+          {/* Tool labels */}
+          <div className="space-y-3 pt-2">
             {toolNames.map((toolName) => {
               const segments = toolSegments[toolName] || [];
               const color = TOOL_COLORS[toolName] || '#CCCCCC';
@@ -175,7 +171,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
               if (segments.length === 0) return null;
 
               return (
-                <div key={toolName} className="flex items-center h-8">
+                <div key={toolName} className="flex items-center h-6">
                   <div
                     className="w-3 h-3 rounded mr-2 flex-shrink-0"
                     style={{ backgroundColor: color }}
@@ -196,44 +192,8 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
             className="relative"
             style={{ width: `${timelineWidth}px`, minWidth: '100%' }}
           >
-            {/* Time markers header */}
-            <div className="relative h-14 mb-0">
-              {/* Time label */}
-              <div className="absolute top-0 left-0 text-xs font-semibold text-gray-600">
-                Time
-              </div>
-
-              {/* Horizontal timeline bar */}
-              <div className="absolute bottom-2 left-0 h-0.5 bg-gray-300" style={{ width: `${videoDuration * pixelsPerSecond}px` }}></div>
-
-              {/* Time markers */}
-              {timeMarkers.map((time) => (
-                <div
-                  key={time}
-                  className="absolute bottom-2"
-                  style={{ left: `${time * pixelsPerSecond}px` }}
-                >
-                  <span className="absolute -top-4 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
-                    {formatTime(time)}
-                  </span>
-                  <div className="absolute bottom-0 left-0 w-px h-2 bg-gray-400"></div>
-                </div>
-              ))}
-
-              {/* End marker */}
-              <div
-                className="absolute bottom-2"
-                style={{ left: `${videoDuration * pixelsPerSecond}px` }}
-              >
-                <span className="absolute -top-4 -translate-x-1/2 left-0 text-xs text-gray-700 font-medium whitespace-nowrap">
-                  {formatTime(videoDuration)}
-                </span>
-                <div className="absolute bottom-0 left-0 w-0.5 h-3 bg-gray-700"></div>
-              </div>
-            </div>
-
-            {/* Tool lines - aligned with labels */}
-            <div className="space-y-3">
+            {/* Tool lines */}
+            <div className="space-y-3 pt-2">
               {toolNames.map((toolName) => {
                 const segments = toolSegments[toolName] || [];
                 const color = TOOL_COLORS[toolName] || '#CCCCCC';
@@ -241,10 +201,10 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
                 if (segments.length === 0) return null;
 
                 return (
-                  <div key={toolName} className="relative h-8">
+                  <div key={toolName} className="relative h-6">
                     {/* Timeline background line */}
                     <div
-                      className="absolute top-1/2 left-0 h-1.5 transform -translate-y-1/2 rounded-full"
+                      className="absolute top-1/2 left-0 h-1 transform -translate-y-1/2 rounded-full"
                       style={{
                         width: `${videoDuration * pixelsPerSecond}px`,
                         backgroundColor: '#E5E7EB'
@@ -262,7 +222,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
                           style={{
                             left: `${segment.start * pixelsPerSecond}px`,
                             width: `${segmentWidth}px`,
-                            height: '18px',
+                            height: '16px',
                             backgroundColor: color,
                             borderRadius: '3px',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
@@ -276,14 +236,45 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
                 );
               })}
             </div>
+
+            {/* Time markers at bottom */}
+            <div className="relative h-6 mt-2">
+              {/* Horizontal timeline bar */}
+              <div className="absolute top-0 left-0 h-px bg-gray-300" style={{ width: `${videoDuration * pixelsPerSecond}px` }}></div>
+
+              {/* Time markers */}
+              {timeMarkers.map((time) => (
+                <div
+                  key={time}
+                  className="absolute top-0"
+                  style={{ left: `${time * pixelsPerSecond}px` }}
+                >
+                  <div className="absolute top-0 left-0 w-px h-1.5 bg-gray-400"></div>
+                  <span className="absolute top-2 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
+                    {formatTime(time)}
+                  </span>
+                </div>
+              ))}
+
+              {/* End marker */}
+              <div
+                className="absolute top-0"
+                style={{ left: `${videoDuration * pixelsPerSecond}px` }}
+              >
+                <div className="absolute top-0 left-0 w-px h-1.5 bg-gray-400"></div>
+                <span className="absolute top-2 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
+                  {formatTime(videoDuration)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Legend */}
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <p className="text-xs text-gray-600 italic">
-          * Click on any bar to jump to that segment in the video. Hover for details. Use zoom controls to adjust the timeline scale.
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <p className="text-xs text-gray-500">
+          Click on any bar to jump to that segment in the video. Hover for details.
         </p>
       </div>
     </div>
