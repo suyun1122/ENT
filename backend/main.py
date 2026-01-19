@@ -12,10 +12,11 @@ os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "0")
 import json
 import tempfile
 import httpx
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+import shutil
 
 # Lazy imports for heavy dependencies (cv2, ultralytics)
 # These are imported inside functions to allow the server to start quickly
@@ -209,6 +210,128 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
         video_id=video_id,
         message="Tool detection started"
     )
+
+@app.post("/detect/upload", response_model=DetectionResponse)
+async def detect_tools_upload(
+    video_id: str = Form(...),
+    video: UploadFile = File(...)
+):
+    """
+    Direct video upload endpoint for faster processing.
+    Accepts video file directly instead of downloading from Blob.
+    Video is deleted after processing.
+    """
+
+    if model is None:
+        if model_loading:
+            raise HTTPException(status_code=503, detail="Model is still loading, please try again shortly")
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
+    # Check if already processing
+    if video_id in processing_status and processing_status[video_id].get("status") == "processing":
+        return DetectionResponse(
+            status="processing",
+            video_id=video_id,
+            message="Detection already in progress"
+        )
+
+    # Check if results already exist
+    frontend_url = os.environ.get("FRONTEND_URL")
+    if frontend_url:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                check_response = await client.get(f"{frontend_url}/api/detect-tools/{video_id}")
+                if check_response.status_code == 200:
+                    check_data = check_response.json()
+                    if check_data.get("status") == "completed":
+                        print(f"[Detection Upload] Results already exist for {video_id}")
+                        return DetectionResponse(
+                            status="completed",
+                            video_id=video_id,
+                            message="Detection already completed"
+                        )
+        except Exception as e:
+            print(f"[Detection Upload] Could not check existing results: {e}")
+
+    temp_video_path = None
+
+    try:
+        # Initialize status
+        processing_status[video_id] = {
+            "status": "processing",
+            "progress": 5,
+            "stage": "receiving",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
+        }
+
+        # Save uploaded file to temp
+        print(f"[Detection Upload] Receiving video for {video_id}")
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            shutil.copyfileobj(video.file, f)
+            temp_video_path = f.name
+
+        print(f"[Detection Upload] Video saved to: {temp_video_path}")
+
+        processing_status[video_id] = {
+            "status": "processing",
+            "progress": 15,
+            "stage": "analyzing",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
+        }
+
+        # Run inference synchronously
+        results_data = run_inference(temp_video_path, video_id)
+
+        # Upload results to Vercel Blob
+        processing_status[video_id] = {
+            "status": "processing",
+            "progress": 95,
+            "stage": "uploading",
+            "current_frame": 0,
+            "total_frames": 0,
+            "processed_frames": 0
+        }
+
+        blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN")
+        if blob_token:
+            await upload_results_to_blob(video_id, results_data, blob_token)
+
+        processing_status[video_id] = {
+            "status": "completed",
+            "progress": 100,
+            "stage": "done",
+            "data": results_data
+        }
+
+        print(f"[Detection Upload] Completed for video: {video_id}")
+
+        return DetectionResponse(
+            status="completed",
+            video_id=video_id,
+            message=f"Detection completed. Found {results_data['summary']['total_tool_detections']} tools."
+        )
+
+    except Exception as e:
+        print(f"[Detection Upload] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        processing_status[video_id] = {
+            "status": "error",
+            "progress": 0,
+            "stage": "failed",
+            "error": str(e)
+        }
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Cleanup temp file
+        if temp_video_path and os.path.exists(temp_video_path):
+            os.unlink(temp_video_path)
+            print(f"[Detection Upload] Cleaned up temp file")
 
 async def process_detection(video_id: str, blob_url: str, callback_url: Optional[str]):
     """Process video detection in background"""
