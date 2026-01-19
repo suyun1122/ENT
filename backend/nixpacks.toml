@@ -1,6 +1,9 @@
 [phases.setup]
 nixPkgs = ["python3", "gcc", "libGL", "glib", "xorg.libxcb", "xorg.libX11"]
-aptPkgs = ["libgl1", "libglib2.0-0", "libxcb1", "libx11-6"]
+aptPkgs = ["libgl1", "libglib2.0-0", "libxcb1", "libx11-6", "libxcb-xinerama0", "libxcb-icccm4", "libxcb-image0", "libxcb-keysyms1", "libxcb-randr0", "libxcb-render-util0", "libxcb-shape0"]
+
+[phases.build]
+cmds = ["ldconfig"]
 
 [phases.install]
 cmds = [

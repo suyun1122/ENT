@@ -4,6 +4,11 @@ FastAPI server for YOLO-based tool detection
 """
 
 import os
+
+# Set environment variables for headless operation BEFORE any imports
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "0")
 import json
 import tempfile
 import httpx
@@ -65,6 +70,9 @@ async def load_model_background():
     def _load_model():
         """Blocking function to import and load model"""
         global cv2, YOLO
+        # Ensure headless mode for cv2
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        os.environ["MPLBACKEND"] = "Agg"
         print(f"[Startup] Importing cv2 and ultralytics...")
         import cv2 as _cv2
         from ultralytics import YOLO as _YOLO
