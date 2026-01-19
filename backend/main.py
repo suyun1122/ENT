@@ -73,6 +73,15 @@ async def load_model_background():
         # Ensure headless mode for cv2
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         os.environ["MPLBACKEND"] = "Agg"
+
+        # Preload libxcb to ensure it's available
+        try:
+            import ctypes
+            ctypes.CDLL("/usr/lib/x86_64-linux-gnu/libxcb.so.1", mode=ctypes.RTLD_GLOBAL)
+            print(f"[Startup] Preloaded libxcb.so.1")
+        except Exception as e:
+            print(f"[Startup] Could not preload libxcb: {e}")
+
         print(f"[Startup] Importing cv2 and ultralytics...")
         import cv2 as _cv2
         from ultralytics import YOLO as _YOLO
