@@ -18,9 +18,7 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip uninstall -y opencv-python || true && \
-    pip install --no-cache-dir opencv-python-headless
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
