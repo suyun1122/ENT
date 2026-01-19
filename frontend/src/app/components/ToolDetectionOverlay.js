@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 /**
  * ToolDetectionOverlay Component
@@ -19,15 +19,15 @@ export default function ToolDetectionOverlay({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [currentDetections, setCurrentDetections] = useState([]);
 
-  // Tool color mapping
+  // Tool color mapping - must match other components
   const TOOL_COLORS = {
-    'Bipolar': '#FF6B6B',      // Red
-    'Clipper': '#4ECDC4',      // Teal
-    'Grasper': '#FFE66D',      // Yellow
-    'Hook': '#95E1D3',         // Mint
-    'Irrigator': '#F38181',    // Pink
-    'Scissors': '#AA96DA',     // Purple
-    'Specimen Bag': '#FCBAD3'  // Light Pink
+    'Bipolar': '#E53935',      // Red
+    'Clipper': '#00ACC1',      // Cyan/Teal
+    'Grasper': '#FDD835',      // Yellow
+    'Hook': '#43A047',         // Green
+    'Irrigator': '#1E88E5',    // Blue
+    'Scissors': '#8E24AA',     // Purple
+    'Specimen Bag': '#F48FB1'  // Pink
   };
 
   // Update canvas dimensions when video size changes
@@ -210,32 +210,32 @@ export function ToolFilterPanel({ detectionData, enabledTools, onToggleTool, isV
     name
   }));
 
-  // Tool color mapping (same as overlay)
+  // Tool color mapping - must match other components
   const TOOL_COLORS = {
-    'Bipolar': '#FF6B6B',
-    'Clipper': '#4ECDC4',
-    'Grasper': '#FFE66D',
-    'Hook': '#95E1D3',
-    'Irrigator': '#F38181',
-    'Scissors': '#AA96DA',
-    'Specimen Bag': '#FCBAD3'
+    'Bipolar': '#E53935',      // Red
+    'Clipper': '#00ACC1',      // Cyan/Teal
+    'Grasper': '#FDD835',      // Yellow
+    'Hook': '#43A047',         // Green
+    'Irrigator': '#1E88E5',    // Blue
+    'Scissors': '#8E24AA',     // Purple
+    'Specimen Bag': '#F48FB1'  // Pink
   };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="flex items-center justify-between p-3 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+          <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
           <h3 className="font-semibold text-gray-900 text-sm">Tool Detection</h3>
         </div>
 
         <div className="flex items-center space-x-2">
           <button
             onClick={onToggleVisibility}
-            className={`p-1.5 rounded transition-colors ${
+            className={`cursor-pointer p-1.5 rounded transition-colors ${
               isVisible
-                ? 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'
-                : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
             }`}
             title={isVisible ? 'Hide detections' : 'Show detections'}
           >
@@ -248,9 +248,14 @@ export function ToolFilterPanel({ detectionData, enabledTools, onToggleTool, isV
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-xs text-gray-600 hover:text-gray-900 font-medium"
+            className="cursor-pointer flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 font-medium transition-colors"
           >
             {isExpanded ? 'Collapse' : 'Filters'}
+            {isExpanded ? (
+              <ChevronUpIcon className="w-3 h-3" />
+            ) : (
+              <ChevronDownIcon className="w-3 h-3" />
+            )}
           </button>
         </div>
       </div>
@@ -270,7 +275,7 @@ export function ToolFilterPanel({ detectionData, enabledTools, onToggleTool, isV
                 key={tool.id}
                 onClick={() => onToggleTool(tool.name)}
                 className={`
-                  w-full flex items-center justify-between p-2 rounded-lg transition-all
+                  cursor-pointer w-full flex items-center justify-between p-2 rounded-lg transition-all
                   ${isEnabled
                     ? 'bg-gray-50 hover:bg-gray-100'
                     : 'bg-gray-100 opacity-50 hover:opacity-75'
@@ -291,10 +296,10 @@ export function ToolFilterPanel({ detectionData, enabledTools, onToggleTool, isV
 
                 <div className={`
                   w-10 h-5 rounded-full transition-colors relative
-                  ${isEnabled ? 'bg-emerald-500' : 'bg-gray-300'}
+                  ${isEnabled ? 'bg-gray-800' : 'bg-gray-300'}
                 `}>
                   <div className={`
-                    absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform
+                    absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm
                     ${isEnabled ? 'left-5' : 'left-0.5'}
                   `}></div>
                 </div>

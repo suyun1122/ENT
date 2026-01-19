@@ -928,42 +928,45 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             {/* Tabs Section - Tool, Timeline, SOAP Note */}
             <div className="w-full">
               {/* Tab Navigation */}
-              <div className="border-b border-gray-200 mb-4">
+              <div className="border-b border-gray-300 mb-4">
                 <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                   <button
                     onClick={() => setActiveTab('tool')}
                     className={`
-                      py-4 px-1 border-b-2 font-medium text-sm
+                      cursor-pointer py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2
                       ${activeTab === 'tool'
-                        ? 'border-emerald-500 text-emerald-600'
+                        ? 'border-gray-900 text-gray-900'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }
                     `}
                   >
+                    <WrenchScrewdriverIcon className="h-4 w-4" />
                     Tool
                   </button>
                   <button
                     onClick={() => setActiveTab('timeline')}
                     className={`
-                      py-4 px-1 border-b-2 font-medium text-sm
+                      cursor-pointer py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2
                       ${activeTab === 'timeline'
-                        ? 'border-blue-500 text-blue-600'
+                        ? 'border-gray-900 text-gray-900'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }
                     `}
                   >
+                    <ClockIcon className="h-4 w-4" />
                     Timeline
                   </button>
                   <button
                     onClick={() => setActiveTab('soap')}
                     className={`
-                      py-4 px-1 border-b-2 font-medium text-sm
+                      cursor-pointer py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2
                       ${activeTab === 'soap'
-                        ? 'border-purple-500 text-purple-600'
+                        ? 'border-gray-900 text-gray-900'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }
                     `}
                   >
+                    <DocumentTextIcon className="h-4 w-4" />
                     SOAP Note
                   </button>
                 </nav>
@@ -1016,16 +1019,15 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
                 {/* Timeline Tab */}
                 {activeTab === 'timeline' && (
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100 shadow-lg">
+                  <div className="bg-white rounded-[20px] p-6 outline outline-1 outline-offset-[-1px] outline-gray-300">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-            <ClockIcon className="h-5 w-5 text-blue-500" />
-            <span>Surgical Phase Timeline</span>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Surgical Phase Timeline
           </h3>
           <div className="flex items-center space-x-2">
             {chapters && chapters.length > 0 && (
-              <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-700 rounded-lg">
-                <span className="text-sm font-medium">
+              <div className="flex items-center space-x-2 px-3 py-1 rounded-full outline outline-1 outline-offset-[-1px] outline-gray-300">
+                <span className="text-sm font-medium text-gray-700">
                   {chapters.length} Phases
                 </span>
               </div>
@@ -1033,7 +1035,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             <button
               onClick={refreshTimeline}
               disabled={isLoadingTimeline}
-              className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              className="cursor-pointer flex items-center space-x-2 px-3 py-2 bg-[#1D1C1B] text-white rounded-2xl hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors text-sm font-medium"
               title="Refresh timeline analysis"
             >
               <ArrowPathIcon className={`h-4 w-4 ${isLoadingTimeline ? 'animate-spin' : ''}`} />
@@ -1044,31 +1046,31 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
         {isLoadingChapters || isLoadingTimeline ? (
           <div className="flex items-center justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="w-8 h-8 rounded-full border-2 border-solid border-gray-500 border-t-transparent animate-spin"></div>
             <span className="ml-3 text-gray-600">
               {isLoadingTimeline ? 'Regenerating timeline...' : 'Loading surgical phases...'}
             </span>
           </div>
         ) : chaptersError ? (
           <div className="text-center py-8">
-            <ExclamationTriangleIcon className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <p className="text-amber-600 font-medium">Failed to load phases</p>
-            <p className="text-sm text-gray-600 mt-2">{chaptersError}</p>
+            <ExclamationTriangleIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-700 font-medium">Failed to load phases</p>
+            <p className="text-sm text-gray-500 mt-2">{chaptersError}</p>
           </div>
         ) : chapters && chapters.length > 0 ? (
           <div className="space-y-3">
             {chapters.map((chapter, index) => (
               <div
                 key={index}
-                className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-blue-200/50 hover:border-blue-300 transition-colors"
+                className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200 hover:outline-gray-300 transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-2">
-                      <span className="px-3 py-1 rounded-full text-sm font-semibold text-blue-700 bg-blue-100 border border-blue-200">
+                      <span className="px-3 py-1 rounded-full text-sm font-medium text-gray-700 bg-white outline outline-1 outline-offset-[-1px] outline-gray-300">
                         {chapter.phase || chapter.chapter_title}
                       </span>
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-500">
                         {Math.floor((chapter.start_time_sec ?? chapter.start_time) / 60)}:
                         {((chapter.start_time_sec ?? chapter.start_time) % 60)
                           .toString()
@@ -1079,7 +1081,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           .padStart(2, "0")}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-800">
+                    <p className="text-sm text-gray-700">
                       {chapter.description || chapter.chapter_summary}
                     </p>
                   </div>
@@ -1101,29 +1103,21 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
                 {/* SOAP Note Tab */}
                 {activeTab === 'soap' && (
-                  <div>
-            {/* Forensics Details Panel */}
-            <div className="w-full">
-                <div className="bg-white/80 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl overflow-hidden">
+                  <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 overflow-hidden">
                     {/* Header */}
-                    <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200/50">
+                    <div className="px-6 py-4 border-b border-gray-200">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                                <div className="p-2 bg-gradient-to-br from-emerald-500 to-lime-600 rounded-lg">
-                  <DocumentTextIcon className="h-6 w-6 text-white" />
-                                </div>
-                                <div>
-                  <h2 className="text-xl font-bold text-gray-900">SOAP Note</h2>
+                            <div>
+                  <h2 className="text-lg font-semibold text-gray-900">SOAP Note</h2>
                   <p className="text-sm text-gray-600">
                     Subjective, Objective, Assessment & Plan
                   </p>
-                                </div>
                             </div>
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={refreshSOAPNote}
                                 disabled={isLoadingSOAP}
-                                className="flex items-center space-x-2 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                className="cursor-pointer flex items-center space-x-2 px-3 py-2 bg-[#1D1C1B] text-white rounded-2xl hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
                                 title="Refresh SOAP note analysis"
                               >
                                 <ArrowPathIcon className={`h-4 w-4 ${isLoadingSOAP ? 'animate-spin' : ''}`} />
@@ -1133,14 +1127,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                                 <>
                                   <button
                                     onClick={exportToPDF}
-                                    className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                    className="cursor-pointer flex items-center space-x-2 px-3 py-2 bg-white text-gray-700 rounded-2xl outline outline-1 outline-offset-[-1px] outline-gray-300 hover:bg-gray-50 transition-colors"
                                   >
                                     <ArrowDownTrayIcon className="h-4 w-4" />
                                     <span className="text-sm font-medium">PDF</span>
                                   </button>
                                   <button
                                     onClick={exportToCSV}
-                                    className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                                    className="cursor-pointer flex items-center space-x-2 px-3 py-2 bg-white text-gray-700 rounded-2xl outline outline-1 outline-offset-[-1px] outline-gray-300 hover:bg-gray-50 transition-colors"
                                   >
                                     <ArrowDownTrayIcon className="h-4 w-4" />
                                     <span className="text-sm font-medium">CSV</span>
@@ -1153,16 +1147,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
                     {isLoading || isLoadingSOAP ? (
                         <div className="p-8 text-center">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto"></div>
+                            <div className="w-10 h-10 rounded-full border-2 border-solid border-gray-500 border-t-transparent animate-spin mx-auto"></div>
               <p className="mt-4 text-gray-600">
-                {isLoadingSOAP ? 'Regenerating SOAP note...' : 'Analyzing surgical video with TwelveLabs Pegasus...'}
+                {isLoadingSOAP ? 'Regenerating SOAP note...' : 'Analyzing surgical video...'}
               </p>
                         </div>
           ) : !operatingNote ? (
                         <div className="p-8 text-center">
                             <div className="mb-6">
                                 <DocumentTextIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">
                   Loading SOAP Note...
                 </h3>
                                 <p className="text-gray-500 max-w-md mx-auto">
@@ -1171,16 +1165,15 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               </div>
             </div>
           ) : operatingNote ? (
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-4">
               {/* OPERATIVE NOTE (SOAP) */}
               {operatingNote.SOAP && (
-                <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl p-6 border border-emerald-100">
-                  <div className="space-y-4">
+                <div className="space-y-4">
                     {/* Subjective */}
-                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
+                    <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
-                          <span className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-sm font-bold">
+                          <span className="w-8 h-8 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center text-sm font-bold">
                             S
                           </span>
                           <span>Subjective</span>
@@ -1188,7 +1181,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         {!isEditingSOAP.Subjective ? (
                           <button
                             onClick={() => handleEditSOAP("Subjective")}
-                            className="flex items-center space-x-1 px-2 py-1 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors"
+                            className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                           >
                             <PencilIcon className="h-3 w-3" />
                             <span>Edit</span>
@@ -1197,14 +1190,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleSaveSOAP("Subjective")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-900 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
                             >
                               <CheckCircleIcon className="h-3 w-3" />
                               <span>Save</span>
                             </button>
                             <button
                               onClick={() => handleCancelEdit("Subjective")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                             >
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
@@ -1213,7 +1206,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         )}
                       </div>
                       {!isEditingSOAP.Subjective ? (
-                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                        <p className="text-sm text-gray-700 leading-relaxed pl-10">
                           {operatingNote.SOAP.Subjective}
                         </p>
                       ) : (
@@ -1222,16 +1215,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           onChange={(e) =>
                             handleSOAPChange("Subjective", e.target.value)
                           }
-                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-emerald-300 rounded focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white min-h-[100px]"
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-700 leading-relaxed border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white min-h-[100px]"
                         />
                       )}
                             </div>
 
                     {/* Objective */}
-                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
+                    <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
-                          <span className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-sm font-bold">
+                          <span className="w-8 h-8 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center text-sm font-bold">
                             O
                           </span>
                           <span>Objective</span>
@@ -1239,7 +1232,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         {!isEditingSOAP.Objective ? (
                           <button
                             onClick={() => handleEditSOAP("Objective")}
-                            className="flex items-center space-x-1 px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                            className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                           >
                             <PencilIcon className="h-3 w-3" />
                             <span>Edit</span>
@@ -1248,14 +1241,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleSaveSOAP("Objective")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-900 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
                             >
                               <CheckCircleIcon className="h-3 w-3" />
                               <span>Save</span>
                             </button>
                             <button
                               onClick={() => handleCancelEdit("Objective")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                             >
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
@@ -1264,7 +1257,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         )}
                                 </div>
                       {!isEditingSOAP.Objective ? (
-                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                        <p className="text-sm text-gray-700 leading-relaxed pl-10">
                           {operatingNote.SOAP.Objective}
                         </p>
                       ) : (
@@ -1273,16 +1266,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           onChange={(e) =>
                             handleSOAPChange("Objective", e.target.value)
                           }
-                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-h-[150px]"
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-700 leading-relaxed border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white min-h-[150px]"
                         />
                       )}
                                 </div>
 
                     {/* Assessment */}
-                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
+                    <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
-                          <span className="w-8 h-8 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-sm font-bold">
+                          <span className="w-8 h-8 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center text-sm font-bold">
                             A
                           </span>
                           <span>Assessment</span>
@@ -1290,7 +1283,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         {!isEditingSOAP.Assessment ? (
                           <button
                             onClick={() => handleEditSOAP("Assessment")}
-                            className="flex items-center space-x-1 px-2 py-1 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors"
+                            className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                           >
                             <PencilIcon className="h-3 w-3" />
                             <span>Edit</span>
@@ -1299,14 +1292,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleSaveSOAP("Assessment")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-900 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
                             >
                               <CheckCircleIcon className="h-3 w-3" />
                               <span>Save</span>
                             </button>
                             <button
                               onClick={() => handleCancelEdit("Assessment")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                             >
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
@@ -1315,7 +1308,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         )}
                         </div>
                       {!isEditingSOAP.Assessment ? (
-                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                        <p className="text-sm text-gray-700 leading-relaxed pl-10">
                           {operatingNote.SOAP.Assessment}
                         </p>
                       ) : (
@@ -1324,16 +1317,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           onChange={(e) =>
                             handleSOAPChange("Assessment", e.target.value)
                           }
-                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-purple-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white min-h-[120px]"
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-700 leading-relaxed border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white min-h-[120px]"
                         />
                       )}
                     </div>
 
                     {/* Plan */}
-                    <div className="bg-white/70 backdrop-blur-sm rounded-lg p-4 border border-emerald-200/50">
+                    <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-semibold text-gray-900 flex items-center space-x-2">
-                          <span className="w-8 h-8 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-sm font-bold">
+                          <span className="w-8 h-8 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center text-sm font-bold">
                             P
                           </span>
                           <span>Plan</span>
@@ -1341,7 +1334,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         {!isEditingSOAP.Plan ? (
                           <button
                             onClick={() => handleEditSOAP("Plan")}
-                            className="flex items-center space-x-1 px-2 py-1 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded transition-colors"
+                            className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                           >
                             <PencilIcon className="h-3 w-3" />
                             <span>Edit</span>
@@ -1350,14 +1343,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           <div className="flex items-center space-x-2">
                             <button
                               onClick={() => handleSaveSOAP("Plan")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-900 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
                             >
                               <CheckCircleIcon className="h-3 w-3" />
                               <span>Save</span>
                             </button>
                             <button
                               onClick={() => handleCancelEdit("Plan")}
-                              className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                              className="cursor-pointer flex items-center space-x-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
                             >
                               <XCircleIcon className="h-3 w-3" />
                               <span>Cancel</span>
@@ -1366,7 +1359,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                         )}
                       </div>
                       {!isEditingSOAP.Plan ? (
-                        <p className="text-sm text-gray-800 leading-relaxed pl-10">
+                        <p className="text-sm text-gray-700 leading-relaxed pl-10">
                           {operatingNote.SOAP.Plan}
                         </p>
                       ) : (
@@ -1375,17 +1368,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           onChange={(e) =>
                             handleSOAPChange("Plan", e.target.value)
                           }
-                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-800 leading-relaxed border border-amber-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white min-h-[100px]"
+                          className="w-full pl-10 pr-2 py-2 text-sm text-gray-700 leading-relaxed border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white min-h-[100px]"
                         />
                       )}
                     </div>
-                  </div>
                 </div>
               )}
             </div>
           ) : null}
-                </div>
-            </div>
                   </div>
                 )}
               </div>

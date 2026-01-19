@@ -285,82 +285,47 @@ export default function ClipChat({ videoId }) {
         style={{ borderBottom: "1px solid #d9d9d9" }}
       >
         <div className="flex items-center gap-3">
-          {/* robot SVG icon */}
-          <div
-            className="flex items-center justify-center rounded-lg"
-            style={{
-              width: 40,
-              height: 40,
-              background: "#1D1C1B",
-            }}
+          {/* robot SVG icon - no background */}
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden
+            className="text-gray-700 flex-shrink-0"
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
+            <rect
+              x="3"
+              y="4"
+              width="18"
+              height="14"
+              rx="3"
+              stroke="currentColor"
+              strokeWidth="1.5"
               fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden
-            >
-              <rect
-                x="3"
-                y="4"
-                width="18"
-                height="14"
-                rx="3"
-                stroke="white"
-                strokeWidth="1.5"
-                fill="none"
-              />
-              <circle cx="8.5" cy="10" r="1.2" fill="white" />
-              <circle cx="15.5" cy="10" r="1.2" fill="white" />
-              <rect
-                x="9"
-                y="13"
-                width="6"
-                height="1.2"
-                rx="0.6"
-                fill="#bdbcbb"
-              />
-              <rect x="11" y="2.5" width="2" height="2" rx="1" fill="#bdbcbb" />
-            </svg>
-          </div>
+            />
+            <circle cx="8.5" cy="10" r="1.5" fill="currentColor" />
+            <circle cx="15.5" cy="10" r="1.5" fill="currentColor" />
+            <rect
+              x="9"
+              y="13"
+              width="6"
+              height="1.5"
+              rx="0.75"
+              fill="currentColor"
+              opacity="0.5"
+            />
+            <rect x="11" y="2" width="2" height="2.5" rx="1" fill="currentColor" opacity="0.5" />
+          </svg>
 
           <div>
             <div className="text-sm font-semibold text-gray-900">
               {AGENT_NAME}
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-600">
               Surgical Video Analyst
             </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Connected badge */}
-          <div className="flex items-center gap-2 px-2 py-1 rounded-full outline outline-1 outline-offset-[-1px] outline-gray-300">
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: "#60e21b" }}
-            />
-            <span className="text-xs text-gray-700 font-normal">Connected</span>
-          </div>
-
-          {/* TwelveLabs badge */}
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg outline outline-1 outline-offset-[-1px] outline-gray-300 bg-white">
-            <img
-              src="/twelvelabs.png"
-              alt="TwelveLabs"
-              style={{ width: 40, height: "auto" }}
-            />
-            <a
-              href="https://www.twelvelabs.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-700 font-normal hover:text-gray-900 transition-colors"
-            >
-              Powered by Pegasus
-            </a>
           </div>
         </div>
       </div>
@@ -387,7 +352,7 @@ export default function ClipChat({ videoId }) {
                 }`}
                 style={{ maxWidth: "92%" }}
               >
-                <div className={`text-xs mb-1 ${m.role === "user" ? "text-gray-400" : "text-gray-500"}`}>
+                <div className={`text-xs mb-1 ${m.role === "user" ? "text-gray-400" : "text-gray-600"}`}>
                   {m.role === "user" ? "You" : AGENT_NAME}
                 </div>
                 {m.typing ? (

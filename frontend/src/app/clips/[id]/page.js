@@ -282,7 +282,7 @@ export default function ClipDetailPage({ params }) {
                         {clipData ? clipData['filename']?.replace(/\.mp4$/i, '') : 'Loading...'}
                     </h1>
                     {displayDate && (
-                        <p className="mt-1 text-sm text-gray-500">
+                        <p className="mt-1 text-sm text-gray-600">
                             Recorded: {displayDate}
                         </p>
                     )}
@@ -358,7 +358,7 @@ export default function ClipDetailPage({ params }) {
                                     <button
                                         onClick={retryAnalysis}
                                         disabled={isRetrying || isAutoRetrying}
-                                        className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 bg-[#1D1C1B] text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+                                        className="cursor-pointer h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 bg-[#1D1C1B] text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
                                     >
                                         {isRetrying ? (
                                             <>
@@ -380,7 +380,7 @@ export default function ClipDetailPage({ params }) {
                                             {!isAutoRetrying ? (
                                                 <button
                                                     onClick={startAutoRetry}
-                                                    className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                                                    className="cursor-pointer h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -390,7 +390,7 @@ export default function ClipDetailPage({ params }) {
                                             ) : (
                                                 <button
                                                     onClick={stopAutoRetry}
-                                                    className="h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                                                    className="cursor-pointer h-10 px-4 py-2 text-sm font-normal rounded-2xl inline-flex justify-center items-center gap-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

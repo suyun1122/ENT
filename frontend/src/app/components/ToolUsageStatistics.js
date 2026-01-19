@@ -6,20 +6,20 @@
  * Displays statistics about tool detections
  */
 export default function ToolUsageStatistics({ detectionData }) {
-  // Tool color mapping
+  // Tool color mapping - must match ToolUsageTimeline.js
   const TOOL_COLORS = {
-    'Bipolar': '#FF6B6B',      // Red
-    'Clipper': '#4ECDC4',      // Teal
-    'Grasper': '#FFE66D',      // Yellow
-    'Hook': '#95E1D3',         // Mint
-    'Irrigator': '#F38181',    // Pink
-    'Scissors': '#AA96DA',     // Purple
-    'Specimen Bag': '#FCBAD3'  // Light Pink
+    'Bipolar': '#E53935',      // Red
+    'Clipper': '#00ACC1',      // Cyan/Teal
+    'Grasper': '#FDD835',      // Yellow
+    'Hook': '#43A047',         // Green
+    'Irrigator': '#1E88E5',    // Blue
+    'Scissors': '#8E24AA',     // Purple
+    'Specimen Bag': '#F48FB1'  // Pink
   };
 
   if (!detectionData || !detectionData.detections) {
     return (
-      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 text-center">
+      <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-4 text-center">
         <p className="text-sm text-gray-500">No tool detection data available</p>
       </div>
     );
@@ -66,18 +66,18 @@ export default function ToolUsageStatistics({ detectionData }) {
   const maxCount = Math.max(...sortedTools.map(t => t.count), 1);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
+    <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-6">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">Tool Usage Statistics</h3>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100">
+        <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
           <div className="text-2xl font-bold text-gray-900">{totalDetections}</div>
-          <div className="text-sm text-gray-600 mt-1">Total Detections</div>
+          <div className="text-sm text-gray-500 mt-1">Total Detections</div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-100">
+        <div className="bg-gray-50 rounded-xl p-4 outline outline-1 outline-offset-[-1px] outline-gray-200">
           <div className="text-2xl font-bold text-gray-900">{avgConfidence}%</div>
-          <div className="text-sm text-gray-600 mt-1">Avg Confidence</div>
+          <div className="text-sm text-gray-500 mt-1">Avg Confidence</div>
         </div>
       </div>
 
@@ -101,13 +101,13 @@ export default function ToolUsageStatistics({ detectionData }) {
                   </div>
                   <span className="text-sm font-semibold text-gray-900">{tool.count}</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
                       width: `${barWidth}%`,
                       backgroundColor: color,
-                      opacity: 0.7
+                      opacity: 0.85
                     }}
                   ></div>
                 </div>

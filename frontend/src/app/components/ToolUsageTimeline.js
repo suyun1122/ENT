@@ -77,7 +77,7 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
   if (!detectionData || !detectionData.detections || !videoDuration) {
     return (
       <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-8 text-center">
-        <p className="text-gray-500">No tool detection data available</p>
+        <p className="text-gray-600">No tool detection data available</p>
       </div>
     );
   }
@@ -282,8 +282,8 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
 
       {/* Legend */}
       <div className="mt-4 pt-4 border-t border-gray-200">
-        <p className="text-xs text-gray-500 italic">
-          💡 Click on any bar to jump to that segment in the video. Hover for details. Use zoom controls to adjust the timeline scale.
+        <p className="text-xs text-gray-600 italic">
+          * Click on any bar to jump to that segment in the video. Hover for details. Use zoom controls to adjust the timeline scale.
         </p>
       </div>
     </div>
