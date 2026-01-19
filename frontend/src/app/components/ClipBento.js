@@ -1067,9 +1067,19 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-2">
-                      <span className="px-3 py-1 rounded-full text-sm font-medium text-gray-700 bg-white outline outline-1 outline-offset-[-1px] outline-gray-300">
+                      <button
+                        onClick={() => {
+                          const videoElement = document.querySelector('video');
+                          if (videoElement) {
+                            videoElement.currentTime = chapter.start_time_sec ?? chapter.start_time;
+                            videoElement.play();
+                          }
+                        }}
+                        className="cursor-pointer px-3 py-1 rounded-full text-sm font-medium text-gray-700 bg-white outline outline-1 outline-offset-[-1px] outline-gray-300 hover:bg-gray-100 hover:outline-gray-400 transition-colors"
+                        title={`Play from ${Math.floor((chapter.start_time_sec ?? chapter.start_time) / 60)}:${((chapter.start_time_sec ?? chapter.start_time) % 60).toString().padStart(2, "0")}`}
+                      >
                         {chapter.phase || chapter.chapter_title}
-                      </span>
+                      </button>
                       <span className="text-sm text-gray-500">
                         {Math.floor((chapter.start_time_sec ?? chapter.start_time) / 60)}:
                         {((chapter.start_time_sec ?? chapter.start_time) % 60)

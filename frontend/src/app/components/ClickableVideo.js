@@ -36,7 +36,19 @@ export default function ClickableVideo({
                 hls.loadSource(hlsUrl);
                 hls.attachMedia(video);
                 hls.on(window.Hls.Events.ERROR, (event, data) => {
-                    console.error('[ClickableVideo] HLS.js error:', data);
+                    // Only log fatal errors - non-fatal errors are recoverable (e.g., during seek)
+                    if (data.fatal) {
+                        console.error('[ClickableVideo] HLS.js fatal error:', data);
+                        // Try to recover from fatal errors
+                        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+                            console.log('[ClickableVideo] Attempting to recover from media error...');
+                            hls.recoverMediaError();
+                        } else if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+                            console.log('[ClickableVideo] Attempting to recover from network error...');
+                            hls.startLoad();
+                        }
+                    }
+                    // Non-fatal errors during seek are normal and can be ignored
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 console.log('[ClickableVideo] Using native HLS');
