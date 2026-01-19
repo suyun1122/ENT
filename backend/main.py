@@ -28,6 +28,7 @@ app.add_middleware(
 # Load model at startup
 MODEL_PATH = os.environ.get("MODEL_PATH", "best.pt")
 model = None
+model_loading = False  # Track if model is currently loading
 
 # Processing status storage
 processing_status = {}
@@ -43,14 +44,33 @@ class DetectionResponse(BaseModel):
     message: str
 
 @app.on_event("startup")
-async def load_model():
-    global model
+async def startup_event():
+    """Start model loading in background - don't block startup"""
+    import asyncio
+    print(f"[Startup] Server starting, will load model in background")
+    # Start model loading as a background task
+    asyncio.create_task(load_model_background())
+
+async def load_model_background():
+    """Load model in background thread to not block the event loop"""
+    global model, model_loading
+    import asyncio
+
+    model_loading = True
     print(f"[Startup] Loading YOLO model from: {MODEL_PATH}")
-    if os.path.exists(MODEL_PATH):
-        model = YOLO(MODEL_PATH)
-        print(f"[Startup] Model loaded successfully")
-    else:
-        print(f"[Startup] WARNING: Model file not found at {MODEL_PATH}")
+
+    try:
+        if os.path.exists(MODEL_PATH):
+            # Run the blocking model load in a thread pool
+            loop = asyncio.get_event_loop()
+            model = await loop.run_in_executor(None, lambda: YOLO(MODEL_PATH))
+            print(f"[Startup] Model loaded successfully")
+        else:
+            print(f"[Startup] WARNING: Model file not found at {MODEL_PATH}")
+    except Exception as e:
+        print(f"[Startup] ERROR loading model: {e}")
+    finally:
+        model_loading = False
 
 @app.get("/")
 async def root():
@@ -58,9 +78,11 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """Health check - responds immediately even if model is still loading"""
     return {
         "status": "healthy",
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "model_loading": model_loading
     }
 
 @app.get("/status/{video_id}")
@@ -75,6 +97,8 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
     """Start tool detection for a video"""
 
     if model is None:
+        if model_loading:
+            raise HTTPException(status_code=503, detail="Model is still loading, please try again shortly")
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     video_id = request.video_id
