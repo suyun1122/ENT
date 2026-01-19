@@ -99,8 +99,42 @@ export default function UploadVideo() {
     checkDetection();
   };
 
+  // Upload video directly to Railway for tool detection (bypasses Blob download)
+  const uploadToRailwayForDetection = async (videoId, videoFile) => {
+    const railwayUrl = process.env.NEXT_PUBLIC_TOOL_DETECTION_BACKEND_URL;
+    if (!railwayUrl) {
+      console.warn('[Railway Upload] NEXT_PUBLIC_TOOL_DETECTION_BACKEND_URL not set, falling back to API');
+      return false;
+    }
+
+    try {
+      console.log(`[Railway Upload] Uploading video directly to Railway for ${videoId}...`);
+
+      const formData = new FormData();
+      formData.append('video_id', videoId);
+      formData.append('video', videoFile);
+
+      const response = await fetch(`${railwayUrl}/detect/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('[Railway Upload] Direct upload successful:', result);
+        return true;
+      } else {
+        console.warn('[Railway Upload] Direct upload failed:', response.status);
+        return false;
+      }
+    } catch (error) {
+      console.warn('[Railway Upload] Direct upload error:', error);
+      return false;
+    }
+  };
+
   // Poll for indexing status
-  const pollIndexingStatus = async (taskId, blobUrl) => {
+  const pollIndexingStatus = async (taskId, blobUrl, videoFile) => {
     const POLL_INTERVAL = 5000;
     const MAX_POLLS = 120;
     let pollCount = 0;
@@ -122,7 +156,7 @@ export default function UploadVideo() {
           }
 
           if (data.status === 'ready') {
-            console.log('[Indexing Status] Video ready! Tool detection triggered:', data.toolDetectionTriggered);
+            console.log('[Indexing Status] Video ready!');
 
             try {
               await fetch(`/api/video-urls/${data.videoId}`, {
@@ -135,7 +169,23 @@ export default function UploadVideo() {
               console.warn('[Indexing Status] Failed to save blob URL mapping:', mappingError);
             }
 
-            if (data.toolDetectionTriggered) {
+            // Try direct upload to Railway first (faster - no Blob download needed)
+            if (videoFile) {
+              console.log('[Indexing Status] Attempting direct Railway upload...');
+              const directUploadSuccess = await uploadToRailwayForDetection(data.videoId, videoFile);
+
+              if (directUploadSuccess) {
+                console.log('[Indexing Status] Direct Railway upload succeeded!');
+                // Still monitor for completion and cleanup
+                waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
+              } else {
+                // Fallback to original Blob-based detection
+                console.log('[Indexing Status] Falling back to Blob-based detection...');
+                if (data.toolDetectionTriggered) {
+                  waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
+                }
+              }
+            } else if (data.toolDetectionTriggered) {
               console.log('[Indexing Status] Starting background detection monitoring...');
               waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
             } else {
@@ -214,7 +264,7 @@ export default function UploadVideo() {
       console.log("[Blob Upload] Indexing started, taskId:", indexData.taskId);
 
       console.log("[Blob Upload] Step 3: Polling for indexing completion...");
-      const videoId = await pollIndexingStatus(indexData.taskId, blob.url);
+      const videoId = await pollIndexingStatus(indexData.taskId, blob.url, file);
       console.log("[Blob Upload] Video indexed successfully, videoId:", videoId);
 
       completeUpload(videoId);
