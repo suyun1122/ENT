@@ -1,78 +1,45 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { list, put, del } from '@vercel/blob';
+import { put } from '@vercel/blob';
 
 // Railway backend URL for tool detection
 const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
 
-// In-memory tracking of videos currently being processed (fallback only)
+// Blob store base URL - set this in Vercel environment variables
+// Format: https://{storeId}.public.blob.vercel-storage.com
+const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
+
+// In-memory tracking (note: won't persist across serverless cold starts)
 const processingVideos = new Map();
 
-// Cleanup old processing entries (older than 10 minutes)
-const PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
-function cleanupStaleProcessing() {
-    const now = Date.now();
-    for (const [videoId, info] of processingVideos.entries()) {
-        if (now - info.startTime > PROCESSING_TIMEOUT_MS) {
-            console.log(`[Detection] Cleaning up stale processing entry: ${videoId}`);
-            processingVideos.delete(videoId);
-        }
+// Try to fetch detection data directly from blob using predictable URL
+// This uses GET (Simple Operation) instead of LIST (Advanced Operation)
+async function fetchDetectionFromBlob(videoId) {
+    if (!BLOB_STORE_BASE_URL) {
+        console.log(`[Detection] BLOB_STORE_BASE_URL not set, cannot fetch directly`);
+        return null;
     }
-}
 
-// Check if processing status exists in Blob
-async function checkProcessingStatus(videoId) {
+    const blobUrl = `${BLOB_STORE_BASE_URL}/detections/${videoId}.json`;
+    console.log(`[Detection] Trying direct fetch: ${blobUrl}`);
+
     try {
-        const prefix = `processing-status/${videoId}`;
-        console.log(`[Detection] Checking processing status with prefix: ${prefix}`);
-        const { blobs } = await list({
-            prefix: prefix,
-            token: process.env.BLOB_READ_WRITE_TOKEN
-        });
-        console.log(`[Detection] Found ${blobs.length} processing-status blobs for ${videoId}`);
-        if (blobs.length > 0) {
-            const response = await fetch(blobs[0].url);
-            return await response.json();
+        const response = await fetch(blobUrl);
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`[Detection] Found blob at predictable URL: ${blobUrl}`);
+            return data;
+        } else if (response.status === 404) {
+            console.log(`[Detection] Blob not found at: ${blobUrl}`);
+            return null;
+        } else {
+            console.log(`[Detection] Unexpected response ${response.status} from: ${blobUrl}`);
+            return null;
         }
     } catch (e) {
-        console.log(`[Detection] Could not check processing status: ${e.message}`);
-    }
-    return null;
-}
-
-// Set processing status in Blob
-async function setProcessingStatus(videoId, status) {
-    try {
-        const statusData = {
-            videoId,
-            status,
-            startTime: new Date().toISOString()
-        };
-        await put(`processing-status/${videoId}.json`, JSON.stringify(statusData), {
-            access: 'public',
-            token: process.env.BLOB_READ_WRITE_TOKEN,
-            contentType: 'application/json',
-        });
-        console.log(`[Detection] Set processing status for ${videoId}: ${status}`);
-    } catch (e) {
-        console.log(`[Detection] Could not set processing status: ${e.message}`);
-    }
-}
-
-// Clear processing status from Blob
-async function clearProcessingStatus(videoId) {
-    try {
-        const { blobs } = await list({
-            prefix: `processing-status/${videoId}`,
-            token: process.env.BLOB_READ_WRITE_TOKEN
-        });
-        for (const blob of blobs) {
-            await del(blob.url, { token: process.env.BLOB_READ_WRITE_TOKEN });
-        }
-        console.log(`[Detection] Cleared processing status for ${videoId}`);
-    } catch (e) {
-        console.log(`[Detection] Could not clear processing status: ${e.message}`);
+        console.log(`[Detection] Error fetching blob: ${e.message}`);
+        return null;
     }
 }
 
@@ -80,6 +47,8 @@ export async function GET(request, { params }) {
     /*
     Get the tool detection results for a specific video
     Returns JSON with bounding box data or processing status
+
+    OPTIMIZED: Uses direct blob URL fetch instead of list() to avoid Advanced Operations
     */
 
     try {
@@ -91,53 +60,23 @@ export async function GET(request, { params }) {
 
         console.log(`[Detection GET] Checking for videoId: ${videoId}`);
 
-        // Check Vercel Blob (production - newly generated detections)
-        // Note: Static files (pre-deployed) are checked by frontend first
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                const blobPrefix = `detections/${videoId}`;
-                console.log(`[Detection GET] Checking Blob with prefix: ${blobPrefix}`);
-
-                const { blobs } = await list({
-                    prefix: blobPrefix,
-                    token: process.env.BLOB_READ_WRITE_TOKEN
-                });
-
-                if (blobs.length > 0) {
-                    // Found the blob - fetch its content
-                    const blobUrl = blobs[0].url;
-                    console.log(`[Detection GET] Found blob: ${blobUrl}`);
-
-                    const response = await fetch(blobUrl);
-                    const detectionData = await response.json();
-
-                    // Proactively clear any stale processing-status (defensive cleanup)
-                    await clearProcessingStatus(videoId);
-
-                    console.log(`[Detection GET] Loaded from Vercel Blob: ${videoId}`);
-                    return NextResponse.json({
-                        status: 'completed',
-                        videoId: videoId,
-                        data: detectionData
-                    });
-                } else {
-                    console.log(`[Detection GET] No blobs found with prefix: ${blobPrefix}`);
-                }
-            } catch (blobError) {
-                // Blob error - log full details
-                console.error(`[Detection GET] Blob error for ${videoId}:`, blobError);
-            }
+        // 1. Try direct blob fetch (Simple Operation - no list() needed)
+        const blobData = await fetchDetectionFromBlob(videoId);
+        if (blobData) {
+            console.log(`[Detection GET] Loaded from Vercel Blob: ${videoId}`);
+            return NextResponse.json({
+                status: 'completed',
+                videoId: videoId,
+                data: blobData
+            });
         }
 
-        // Fallback to local file system (development only)
-        // In production, static files are served directly by Vercel CDN
+        // 2. Check local file system (development / pre-deployed static files)
         const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
 
         if (fs.existsSync(detectionPath)) {
             try {
                 const detectionData = JSON.parse(fs.readFileSync(detectionPath, 'utf-8'));
-                // Proactively clear any stale processing-status (defensive cleanup)
-                await clearProcessingStatus(videoId);
                 console.log(`[Detection GET] Loaded from local file system: ${videoId}`);
                 return NextResponse.json({
                     status: 'completed',
@@ -150,37 +89,12 @@ export async function GET(request, { params }) {
             }
         }
 
-        // Check persistent processing status in Blob
-        const persistentStatus = await checkProcessingStatus(videoId);
-        if (persistentStatus && persistentStatus.status === 'processing') {
-            const startTime = new Date(persistentStatus.startTime).getTime();
-            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-
-            // Check if processing has been running too long (> 15 minutes = likely failed)
-            if (elapsedSeconds > 900) {
-                console.log(`[Detection GET] Processing status stale (${elapsedSeconds}s), clearing...`);
-                await clearProcessingStatus(videoId);
-            } else {
-                console.log(`[Detection GET] Found persistent processing status for ${videoId} (${elapsedSeconds}s elapsed)`);
-
-                // Return processing status with elapsed time (frontend calculates estimated progress)
-                return NextResponse.json({
-                    status: 'processing',
-                    videoId: videoId,
-                    elapsedSeconds: elapsedSeconds,
-                    message: 'Tool detection is currently in progress'
-                });
-            }
-        }
-
-        // Check in-memory processing status (fallback)
-        cleanupStaleProcessing();
+        // 3. Check in-memory processing status (works within same serverless instance)
         if (processingVideos.has(videoId)) {
             const processingInfo = processingVideos.get(videoId);
             const elapsedSeconds = Math.floor((Date.now() - processingInfo.startTime) / 1000);
             console.log(`[Detection GET] Video ${videoId} is currently processing (${elapsedSeconds}s elapsed)`);
 
-            // Return processing status with elapsed time
             return NextResponse.json({
                 status: 'processing',
                 videoId: videoId,
@@ -189,7 +103,7 @@ export async function GET(request, { params }) {
             });
         }
 
-        // No results found
+        // 4. No results found
         console.log(`[Detection GET] No results found for ${videoId}`);
         return NextResponse.json({
             status: 'not_found',
@@ -229,53 +143,10 @@ export async function POST(request, { params }) {
         console.log(`[Detection POST] No body or invalid JSON: ${e.message}`);
     }
 
-    // Check if results already exist in Vercel Blob
-    try {
-        const blobPrefix = `detections/${videoId}`;
-        const { blobs } = await list({
-            prefix: blobPrefix,
-            token: process.env.BLOB_READ_WRITE_TOKEN
-        });
-
-        if (blobs.length > 0) {
-            console.log(`[Detection] Already exists in Blob: ${videoId}`);
-            // Clear any stale processing status
-            await clearProcessingStatus(videoId);
-            return NextResponse.json({
-                status: 'completed',
-                videoId: videoId,
-                message: 'Detection already completed. Use GET to retrieve results.'
-            });
-        }
-    } catch (blobError) {
-        // Continue if not found in Blob
-    }
-
-    // Check persistent processing status - prevent duplicate processing
-    const persistentStatus = await checkProcessingStatus(videoId);
-    if (persistentStatus && persistentStatus.status === 'processing') {
-        const startTime = new Date(persistentStatus.startTime).getTime();
-        const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-
-        // Only consider stale if > 15 minutes
-        if (elapsedSeconds <= 900) {
-            console.log(`[Detection POST] Already processing (persistent status): ${videoId}`);
-            return NextResponse.json({
-                status: 'processing',
-                videoId: videoId,
-                message: 'Tool detection is already in progress'
-            });
-        } else {
-            // Stale status, clear it
-            console.log(`[Detection POST] Clearing stale processing status: ${videoId}`);
-            await clearProcessingStatus(videoId);
-        }
-    }
-
-    // Check local file system (development only)
-    const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
-    if (fs.existsSync(detectionPath)) {
-        console.log(`[Detection] Already exists in local file system: ${videoId}`);
+    // Check if already completed in blob (direct fetch)
+    const existingData = await fetchDetectionFromBlob(videoId);
+    if (existingData) {
+        console.log(`[Detection POST] Already completed (blob): ${videoId}`);
         return NextResponse.json({
             status: 'completed',
             videoId: videoId,
@@ -283,15 +154,35 @@ export async function POST(request, { params }) {
         });
     }
 
-    // Check if video is already being processed
-    cleanupStaleProcessing();
-    if (processingVideos.has(videoId)) {
-        console.log(`[Detection POST] Video ${videoId} is already being processed`);
+    // Check local file system (development only)
+    const detectionPath = path.join(process.cwd(), 'public', 'detections', `${videoId}.json`);
+    if (fs.existsSync(detectionPath)) {
+        console.log(`[Detection POST] Already exists in local file system: ${videoId}`);
         return NextResponse.json({
-            status: 'processing',
+            status: 'completed',
             videoId: videoId,
-            message: 'Tool detection is already in progress for this video'
+            message: 'Detection already completed. Use GET to retrieve results.'
         });
+    }
+
+    // Check if video is already being processed (in-memory)
+    if (processingVideos.has(videoId)) {
+        const processingInfo = processingVideos.get(videoId);
+        const elapsedSeconds = Math.floor((Date.now() - processingInfo.startTime) / 1000);
+
+        // Only consider stale if > 15 minutes
+        if (elapsedSeconds <= 900) {
+            console.log(`[Detection POST] Video ${videoId} is already being processed (${elapsedSeconds}s elapsed)`);
+            return NextResponse.json({
+                status: 'processing',
+                videoId: videoId,
+                message: 'Tool detection is already in progress for this video'
+            });
+        } else {
+            // Stale, remove it
+            console.log(`[Detection POST] Clearing stale processing entry: ${videoId}`);
+            processingVideos.delete(videoId);
+        }
     }
 
     // Require blobUrl for new detections
@@ -313,19 +204,14 @@ export async function POST(request, { params }) {
         }, { status: 503 });
     }
 
-    // Mark video as processing (both in-memory and persistent)
+    // Mark video as processing (in-memory only - no blob write needed)
     processingVideos.set(videoId, { startTime: Date.now() });
-    await setProcessingStatus(videoId, 'processing');
-    console.log(`[Detection POST] Marked ${videoId} as processing (persistent)`);
+    console.log(`[Detection POST] Marked ${videoId} as processing`);
 
     // Call Railway backend to start detection
     try {
         console.log(`[Detection POST] Calling Railway backend...`);
         console.log(`[Detection POST] Railway URL: ${TOOL_DETECTION_BACKEND_URL}/detect`);
-        console.log(`[Detection POST] Request body:`, JSON.stringify({
-            video_id: videoId,
-            blob_url: blobUrl,
-        }));
 
         const response = await fetch(`${TOOL_DETECTION_BACKEND_URL}/detect`, {
             method: 'POST',
@@ -344,7 +230,6 @@ export async function POST(request, { params }) {
             const errorText = await response.text();
             console.error(`[Detection POST] Railway backend error: ${errorText}`);
             processingVideos.delete(videoId);
-            await clearProcessingStatus(videoId); // Clear persistent status on error
             return NextResponse.json({
                 status: 'error',
                 videoId: videoId,
@@ -363,9 +248,7 @@ export async function POST(request, { params }) {
 
     } catch (error) {
         processingVideos.delete(videoId);
-        await clearProcessingStatus(videoId); // Clear persistent status on error
         console.error(`[Detection POST] Error calling Railway backend:`, error);
-        console.error(`[Detection POST] Error stack:`, error.stack);
         return NextResponse.json({
             status: 'error',
             videoId: videoId,
@@ -401,19 +284,20 @@ export async function PUT(request, { params }) {
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             const blobPath = `detections/${videoId}.json`;
 
+            // Use addRandomSuffix: false for predictable URLs
             const blob = await put(blobPath, JSON.stringify(detectionData, null, 2), {
                 access: 'public',
                 token: process.env.BLOB_READ_WRITE_TOKEN,
                 contentType: 'application/json',
+                addRandomSuffix: false,  // Predictable URL
             });
 
             console.log(`[Detection PUT] Stored in Vercel Blob: ${blob.url}`);
 
-            // Remove from processing (both in-memory and persistent)
+            // Remove from processing
             if (processingVideos.has(videoId)) {
                 processingVideos.delete(videoId);
             }
-            await clearProcessingStatus(videoId);
             console.log(`[Detection PUT] Cleared processing status for ${videoId}`);
 
             return NextResponse.json({
