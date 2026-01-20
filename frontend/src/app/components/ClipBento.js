@@ -355,28 +355,34 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setIsLoadingSurgicalAnalysis(false);
           completeAnalysis(videoId);
         } else if (data.status === "not_found") {
-          // No existing analysis - generate both timeline and SOAP in parallel
+          // No existing analysis - generate timeline first, then SOAP (sequential to avoid race condition)
           setIsLoadingSurgicalAnalysis(true);
           startAnalysis(videoId);
-          setSurgicalAnalysisStage('generating analysis...');
-          setSurgicalAnalysisProgress(10);
 
-          console.log('[Analysis] Starting initial generation (timeline + SOAP in parallel)');
+          console.log('[Analysis] Starting initial generation (sequential: timeline → SOAP)');
 
-          // Call both endpoints in parallel
-          const [timelineResult, soapResult] = await Promise.all([
-            fetch(`/api/analysis/${videoId}/timeline`, { method: "POST" }).then(r => r.json()),
-            fetch(`/api/analysis/${videoId}/soap`, { method: "POST" }).then(r => r.json())
-          ]);
-
+          // Step 1: Generate timeline first
+          setSurgicalAnalysisStage('generating timeline...');
+          setSurgicalAnalysisProgress(20);
+          const timelineResult = await fetch(`/api/analysis/${videoId}/timeline`, { method: "POST" }).then(r => r.json());
           console.log('[Analysis] Timeline result:', timelineResult.status);
+
+          // Step 2: Generate SOAP (will merge with timeline data)
+          setSurgicalAnalysisStage('generating SOAP note...');
+          setSurgicalAnalysisProgress(60);
+          const soapResult = await fetch(`/api/analysis/${videoId}/soap`, { method: "POST" }).then(r => r.json());
           console.log('[Analysis] SOAP result:', soapResult.status);
 
-          // Use the latest data (SOAP should have both since it runs after timeline)
-          const finalData = soapResult.status === 'completed' ? soapResult.data : timelineResult.data;
-
-          if (finalData) {
-            setSurgicalAnalysisData(finalData);
+          // SOAP result should have both timeline and SOAP data (merged)
+          if (soapResult.status === 'completed' && soapResult.data) {
+            setSurgicalAnalysisData(soapResult.data);
+            setSurgicalAnalysisProgress(100);
+            setSurgicalAnalysisStage('completed');
+            setIsLoadingSurgicalAnalysis(false);
+            completeAnalysis(videoId);
+          } else if (timelineResult.status === 'completed' && timelineResult.data) {
+            // Fallback to timeline data if SOAP failed
+            setSurgicalAnalysisData(timelineResult.data);
             setSurgicalAnalysisProgress(100);
             setSurgicalAnalysisStage('completed');
             setIsLoadingSurgicalAnalysis(false);
