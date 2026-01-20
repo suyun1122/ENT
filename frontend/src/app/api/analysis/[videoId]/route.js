@@ -4,6 +4,10 @@ import fs from 'fs';
 import { TwelveLabs } from 'twelvelabs-js';
 import { put, del } from '@vercel/blob';
 
+// Route segment config - increase maxDuration for TwelveLabs API calls (30s-2min)
+export const maxDuration = 180; // 3 minutes
+export const dynamic = 'force-dynamic';
+
 // Blob store base URL for direct access
 const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
 
@@ -543,24 +547,36 @@ export async function POST(request, { params }) {
     // Start processing
     processingStatus.set(processingKey, { progress: 0, stage: 'initializing' });
 
-    // Process asynchronously
-    processSurgicalAnalysis(videoId, type).catch(error => {
-        console.error('[Surgical Analysis] Processing error:', error);
-        processingStatus.delete(processingKey);
-    });
-
     const typeMessages = {
         'all': 'Full surgical analysis',
         'chapters': 'Timeline/chapters analysis',
         'soap': 'SOAP note analysis'
     };
 
-    return NextResponse.json({
-        status: 'started',
-        videoId,
-        type,
-        message: `${typeMessages[type]} ${force ? 'force refresh ' : ''}started.`
-    });
+    // Process SYNCHRONOUSLY to avoid Vercel serverless termination issues
+    // This makes the request longer but ensures the processing completes
+    try {
+        console.log(`[Surgical Analysis] Starting synchronous ${type} processing...`);
+        await processSurgicalAnalysis(videoId, type);
+        console.log(`[Surgical Analysis] Synchronous ${type} processing completed!`);
+
+        return NextResponse.json({
+            status: 'completed',
+            videoId,
+            type,
+            message: `${typeMessages[type]} ${force ? 'force refresh ' : ''}completed.`
+        });
+    } catch (error) {
+        console.error('[Surgical Analysis] Processing error:', error);
+        processingStatus.delete(processingKey);
+
+        return NextResponse.json({
+            status: 'error',
+            videoId,
+            type,
+            message: `${typeMessages[type]} failed: ${error.message}`
+        }, { status: 500 });
+    }
 }
 
 async function processSurgicalAnalysis(videoId, type = 'all') {

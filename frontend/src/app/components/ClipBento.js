@@ -392,7 +392,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         if (data.status === "completed") {
           // For partial refresh, check if _lastUpdated is newer than when refresh started
           const lastUpdated = data.data?._lastUpdated || null;
-          const refreshStarted = refreshStartTimeRef.current;
+
+          // Use the correct ref based on refresh type
+          const refreshStarted = refreshType === 'timeline'
+            ? timelineRefreshStartRef.current
+            : refreshType === 'soap'
+              ? soapRefreshStartRef.current
+              : null;
+
           const isDataNewer = lastUpdated && refreshStarted && new Date(lastUpdated) > new Date(refreshStarted);
 
           console.log(`[Poll] ${refreshType}: completed, lastUpdated=${lastUpdated}, refreshStarted=${refreshStarted}, isNewer=${isDataNewer}, attempt=${attempts}`);
@@ -407,7 +414,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               setChapters(data.data.chapters);
               setSurgicalAnalysisData(data.data); // Update full data to get _lastUpdated
               setIsLoadingTimeline(false);
-              refreshStartTimeRef.current = null; // Clear refresh tracking
+              timelineRefreshStartRef.current = null; // Clear refresh tracking
             } else {
               // Data is old or chapters is null - still processing, continue polling
               console.log(`[Poll] timeline: waiting for newer data, continuing polling...`);
@@ -417,7 +424,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               } else {
                 console.log(`[Poll] timeline: max attempts reached, stopping`);
                 setIsLoadingTimeline(false);
-                refreshStartTimeRef.current = null;
+                timelineRefreshStartRef.current = null;
               }
             }
             return;
@@ -431,7 +438,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               setOperatingNote(data.data.operative_note);
               setSurgicalAnalysisData(data.data); // Update full data to get _lastUpdated
               setIsLoadingSOAP(false);
-              refreshStartTimeRef.current = null; // Clear refresh tracking
+              soapRefreshStartRef.current = null; // Clear refresh tracking
             } else {
               // Data is old or operative_note is null - still processing, continue polling
               console.log(`[Poll] soap: waiting for newer data, continuing polling...`);
@@ -441,7 +448,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
               } else {
                 console.log(`[Poll] soap: max attempts reached, stopping`);
                 setIsLoadingSOAP(false);
-                refreshStartTimeRef.current = null;
+                soapRefreshStartRef.current = null;
               }
             }
             return;
@@ -519,26 +526,39 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingSOAP, setIsLoadingSOAP] = useState(false);
 
-  // Track when refresh started (to detect when new data arrives)
-  const refreshStartTimeRef = React.useRef(null);
+  // Track when refresh started (separate for each type to avoid conflicts)
+  const timelineRefreshStartRef = React.useRef(null);
+  const soapRefreshStartRef = React.useRef(null);
 
   // Refresh only Timeline/chapters - fetches from Twelve Labs API
   const refreshTimeline = async () => {
     if (!videoId || isLoadingTimeline) return;
 
     setIsLoadingTimeline(true);
-    // Don't set chapters to null - keep showing old data until new data arrives
-    // setChapters(null);
-
-    // Record when refresh started
-    refreshStartTimeRef.current = new Date().toISOString();
-    console.log(`[Refresh] Timeline refresh started at ${refreshStartTimeRef.current}`);
+    console.log(`[Refresh] Timeline refresh started`);
 
     try {
-      // Use force=true to regenerate from TwelveLabs API
+      // POST now waits for completion (synchronous processing)
       const startResponse = await fetch(`/api/analysis/${videoId}?type=chapters&force=true`, { method: "POST" });
-      await startResponse.json();
-      pollSurgicalAnalysis(videoId, 'timeline');
+      const result = await startResponse.json();
+      console.log(`[Refresh] Timeline POST result:`, result);
+
+      if (result.status === 'completed' || result.status === 'error') {
+        // Processing completed, fetch fresh data
+        const dataResponse = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await dataResponse.json();
+
+        if (data.status === 'completed' && data.data?.chapters) {
+          console.log(`[Refresh] Timeline: Setting ${data.data.chapters.length} chapters`);
+          setChapters(data.data.chapters);
+          setSurgicalAnalysisData(data.data);
+        }
+        setIsLoadingTimeline(false);
+      } else {
+        // Fallback to polling if async processing is still used
+        timelineRefreshStartRef.current = new Date().toISOString();
+        pollSurgicalAnalysis(videoId, 'timeline');
+      }
     } catch (error) {
       console.error('[Refresh] Timeline refresh failed:', error);
       setIsLoadingTimeline(false);
@@ -550,18 +570,30 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     if (!videoId || isLoadingSOAP) return;
 
     setIsLoadingSOAP(true);
-    // Don't set operatingNote to null - keep showing old data until new data arrives
-    // setOperatingNote(null);
-
-    // Record when refresh started
-    refreshStartTimeRef.current = new Date().toISOString();
-    console.log(`[Refresh] SOAP refresh started at ${refreshStartTimeRef.current}`);
+    console.log(`[Refresh] SOAP refresh started`);
 
     try {
-      // Use force=true to regenerate from TwelveLabs API
+      // POST now waits for completion (synchronous processing)
       const startResponse = await fetch(`/api/analysis/${videoId}?type=soap&force=true`, { method: "POST" });
-      await startResponse.json();
-      pollSurgicalAnalysis(videoId, 'soap');
+      const result = await startResponse.json();
+      console.log(`[Refresh] SOAP POST result:`, result);
+
+      if (result.status === 'completed' || result.status === 'error') {
+        // Processing completed, fetch fresh data
+        const dataResponse = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await dataResponse.json();
+
+        if (data.status === 'completed' && data.data?.operative_note) {
+          console.log(`[Refresh] SOAP: Setting operative_note`);
+          setOperatingNote(data.data.operative_note);
+          setSurgicalAnalysisData(data.data);
+        }
+        setIsLoadingSOAP(false);
+      } else {
+        // Fallback to polling if async processing is still used
+        soapRefreshStartRef.current = new Date().toISOString();
+        pollSurgicalAnalysis(videoId, 'soap');
+      }
     } catch (error) {
       console.error('[Refresh] SOAP refresh failed:', error);
       setIsLoadingSOAP(false);
