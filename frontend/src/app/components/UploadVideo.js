@@ -366,7 +366,7 @@ export default function UploadVideo() {
                   MP4, MOV, AVI
                 </span>
                 <span className="px-2 py-0.5 text-[11px] font-['Milling'] border rounded" style={{ borderColor: 'var(--zinc-300)', color: 'var(--zinc-600)' }}>
-                  Max 200MB
+                  Max 100MB
                 </span>
               </div>
 
