@@ -58,6 +58,41 @@ async function deleteBlobIfExists(videoId) {
     }
 }
 
+// Helper function to save to blob with retry
+async function saveToBlobWithRetry(videoId, data, maxRetries = 2) {
+    const blobPath = `analysis/${videoId}.json`;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            // Try to delete existing blob first
+            await deleteBlobIfExists(videoId);
+
+            // Small delay after delete
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Create new blob
+            const blob = await put(blobPath, JSON.stringify(data, null, 2), {
+                access: 'public',
+                contentType: 'application/json',
+                addRandomSuffix: false,
+                cacheControlMaxAge: 0
+            });
+
+            console.log(`[Surgical Analysis] Saved to Blob: ${blob.url}`);
+            return blob;
+        } catch (error) {
+            console.log(`[Surgical Analysis] Blob save attempt ${attempt + 1} failed: ${error.message}`);
+
+            if (attempt === maxRetries) {
+                throw error;
+            }
+
+            // Wait longer before retry
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
+}
+
 // Lazy initialization to avoid build-time errors
 let twelvelabs_client = null;
 function getTwelveLabsClient() {
@@ -343,24 +378,7 @@ export async function PATCH(request, { params }) {
         // 4. Save to Vercel Blob (primary storage for production)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                // Delete existing blob first
-                await deleteBlobIfExists(videoId);
-
-                // Wait a bit for deletion to propagate
-                await new Promise(resolve => setTimeout(resolve, 200));
-
-                // Create new blob with updated data
-                const blob = await put(
-                    `analysis/${videoId}.json`,
-                    JSON.stringify(updatedData, null, 2),
-                    {
-                        access: 'public',
-                        contentType: 'application/json',
-                        addRandomSuffix: false,
-                        cacheControlMaxAge: 0
-                    }
-                );
-                console.log('[Surgical Analysis] Successfully saved to Vercel Blob:', blob.url);
+                await saveToBlobWithRetry(videoId, updatedData);
                 console.log('[Surgical Analysis] Updated SOAP sections:', Object.keys(SOAP));
             } catch (blobError) {
                 console.error('[Surgical Analysis] Failed to update Blob:', blobError);
@@ -486,27 +504,11 @@ export async function POST(request, { params }) {
             // Save updated data with nullified field
             if (process.env.BLOB_READ_WRITE_TOKEN) {
                 try {
-                    await deleteBlobIfExists(videoId);
-                    await put(`analysis/${videoId}.json`, JSON.stringify(existingData, null, 2), {
-                        access: 'public',
-                        contentType: 'application/json',
-                        addRandomSuffix: false
-                    });
+                    await saveToBlobWithRetry(videoId, existingData);
                     console.log(`[Surgical Analysis] Nullified ${type} in Blob cache`);
                 } catch (blobError) {
                     console.error('[Surgical Analysis] Failed to update Blob:', blobError);
                 }
-            }
-
-            // Also update local file if exists
-            try {
-                const localPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-                if (fs.existsSync(localPath)) {
-                    fs.writeFileSync(localPath, JSON.stringify(existingData, null, 2));
-                    console.log(`[Surgical Analysis] Nullified ${type} in local cache`);
-                }
-            } catch (fsError) {
-                // Ignore - may fail in production
             }
         }
     }
@@ -631,32 +633,23 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
         // Save to Vercel Blob FIRST (works in production)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                // Delete existing blob first to avoid conflicts
-                await deleteBlobIfExists(videoId);
-
-                const blob = await put(`analysis/${videoId}.json`, JSON.stringify(finalData, null, 2), {
-                    access: 'public',
-                    contentType: 'application/json',
-                    addRandomSuffix: false
-                });
-                console.log(`[Surgical Analysis] Uploaded to Vercel Blob: ${blob.url}`);
+                await saveToBlobWithRetry(videoId, finalData);
             } catch (blobError) {
                 console.error(`[Surgical Analysis] Failed to upload to Vercel Blob:`, blobError);
             }
-        }
-
-        // Also save to local filesystem (for development, may fail in production - that's ok)
-        try {
-            const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-            const dir = path.dirname(localOutputPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
+        } else {
+            // Local filesystem only for development (no Blob configured)
+            try {
+                const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+                const dir = path.dirname(localOutputPath);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                fs.writeFileSync(localOutputPath, JSON.stringify(finalData, null, 2));
+                console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
+            } catch (fsError) {
+                console.log(`[Surgical Analysis] Local file save skipped`);
             }
-            fs.writeFileSync(localOutputPath, JSON.stringify(finalData, null, 2));
-            console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
-        } catch (fsError) {
-            // Expected to fail on Vercel (read-only filesystem) - that's OK, we have Blob
-            console.log(`[Surgical Analysis] Local file save skipped (read-only filesystem)`);
         }
 
         processingStatus.set(processingKey, { progress: 100, stage: 'completed' });
