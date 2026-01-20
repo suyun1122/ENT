@@ -44,51 +44,63 @@ async function fetchBlobData(videoId) {
     }
 }
 
-// Helper function to delete blob
+// Helper function to delete blob (with explicit token)
 async function deleteBlobIfExists(videoId) {
     const blobUrl = getBlobUrl(videoId);
-    if (!blobUrl || !process.env.BLOB_READ_WRITE_TOKEN) return;
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+
+    if (!blobUrl || !token) {
+        console.log(`[Surgical Analysis] Delete skipped: blobUrl=${!!blobUrl}, token=${!!token}`);
+        return false;
+    }
 
     try {
-        await del(blobUrl);
-        console.log(`[Surgical Analysis] Deleted blob: ${blobUrl}`);
+        console.log(`[Surgical Analysis] Attempting to delete: ${blobUrl}`);
+        await del(blobUrl, { token });
+        console.log(`[Surgical Analysis] Successfully deleted blob`);
+        return true;
     } catch (error) {
-        // Ignore - blob may not exist
-        console.log(`[Surgical Analysis] Delete skipped (may not exist): ${error.message}`);
+        console.log(`[Surgical Analysis] Delete failed: ${error.message}`);
+        return false;
     }
 }
 
 // Helper function to save to blob with retry
-async function saveToBlobWithRetry(videoId, data, maxRetries = 2) {
+async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
     const blobPath = `analysis/${videoId}.json`;
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+
+    console.log(`[Surgical Analysis] Saving to blob: ${blobPath}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             // Try to delete existing blob first
-            await deleteBlobIfExists(videoId);
+            const deleted = await deleteBlobIfExists(videoId);
+            console.log(`[Surgical Analysis] Delete result: ${deleted}`);
 
-            // Small delay after delete
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Delay after delete to ensure propagation
+            await new Promise(resolve => setTimeout(resolve, deleted ? 500 : 100));
 
-            // Create new blob
+            // Create new blob with explicit token
             const blob = await put(blobPath, JSON.stringify(data, null, 2), {
                 access: 'public',
                 contentType: 'application/json',
                 addRandomSuffix: false,
-                cacheControlMaxAge: 0
+                cacheControlMaxAge: 0,
+                token
             });
 
             console.log(`[Surgical Analysis] Saved to Blob: ${blob.url}`);
             return blob;
         } catch (error) {
-            console.log(`[Surgical Analysis] Blob save attempt ${attempt + 1} failed: ${error.message}`);
+            console.log(`[Surgical Analysis] Blob save attempt ${attempt + 1}/${maxRetries + 1} failed: ${error.message}`);
 
             if (attempt === maxRetries) {
                 throw error;
             }
 
             // Wait longer before retry
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
         }
     }
 }
