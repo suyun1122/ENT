@@ -12,7 +12,8 @@
       "WebFetch(domain:docs.railway.com)",
       "Bash(npm run build:*)",
       "Bash(curl:*)",
-      "Bash(VIDEO_FILE=\"/Users/Miranda/twelveLabs/surgical-tool-detection/Surgical removal of a malignant brain tumor \\(glioblastoma multiforme or GBM\\) in a young patient..mp4\")"
+      "Bash(VIDEO_FILE=\"/Users/Miranda/twelveLabs/surgical-tool-detection/Surgical removal of a malignant brain tumor \\(glioblastoma multiforme or GBM\\) in a young patient..mp4\")",
+      "Bash(npx tsc:*)"
     ]
   }
 }

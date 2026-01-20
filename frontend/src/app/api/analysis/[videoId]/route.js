@@ -9,23 +9,37 @@ const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
 
 // Helper function to get blob URL
 function getBlobUrl(videoId) {
-    if (!BLOB_STORE_BASE_URL) return null;
+    if (!BLOB_STORE_BASE_URL) {
+        console.log(`[Surgical Analysis] BLOB_STORE_BASE_URL not configured`);
+        return null;
+    }
     return `${BLOB_STORE_BASE_URL}/analysis/${videoId}.json`;
 }
 
-// Helper function to fetch existing blob data
+// Helper function to fetch existing blob data (with cache busting)
 async function fetchBlobData(videoId) {
     const blobUrl = getBlobUrl(videoId);
     if (!blobUrl) return null;
 
     try {
-        const response = await fetch(blobUrl);
+        // Add cache busting to avoid CDN caching issues
+        const urlWithCacheBust = `${blobUrl}?t=${Date.now()}`;
+        const response = await fetch(urlWithCacheBust, {
+            cache: 'no-store',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
         if (response.ok) {
-            return await response.json();
+            const data = await response.json();
+            console.log(`[Surgical Analysis] Loaded from Blob: ${blobUrl}`);
+            return data;
         }
+        console.log(`[Surgical Analysis] Blob fetch returned ${response.status}: ${blobUrl}`);
         return null;
     } catch (error) {
-        console.log(`[Surgical Analysis] Blob not found at ${blobUrl}`);
+        console.log(`[Surgical Analysis] Blob fetch error: ${error.message}`);
         return null;
     }
 }
@@ -233,7 +247,6 @@ export async function GET(request, { params }) {
     // 1. Check Vercel Blob Storage first (using direct URL fetch)
     const blobData = await fetchBlobData(videoId);
     if (blobData) {
-        console.log('[Surgical Analysis] Found in Vercel Blob');
         return NextResponse.json({
             status: 'completed',
             videoId,
@@ -241,19 +254,23 @@ export async function GET(request, { params }) {
         });
     }
 
-    // 2. Fallback to local filesystem (for development and pre-deployed videos)
-    const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-    if (fs.existsSync(analysisPath)) {
-        try {
-            console.log('[Surgical Analysis] Found in local filesystem');
-            const analysisData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-            return NextResponse.json({
-                status: 'completed',
-                videoId,
-                data: analysisData
-            });
-        } catch (error) {
-            console.error('[Surgical Analysis] Error reading local file:', error);
+    // 2. Fallback to local filesystem ONLY if Blob is not configured (development only)
+    // In production (BLOB_STORE_BASE_URL is set), we should NOT use local files
+    // because they might be stale (deployed with build, never updated)
+    if (!BLOB_STORE_BASE_URL) {
+        const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+        if (fs.existsSync(analysisPath)) {
+            try {
+                console.log('[Surgical Analysis] Found in local filesystem (dev mode)');
+                const analysisData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+                return NextResponse.json({
+                    status: 'completed',
+                    videoId,
+                    data: analysisData
+                });
+            } catch (error) {
+                console.error('[Surgical Analysis] Error reading local file:', error);
+            }
         }
     }
 
