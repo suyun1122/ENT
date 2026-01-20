@@ -1,0 +1,62 @@
+{
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Anesthesia & Positioning",
+      "start_time": 0,
+      "end_time": 179,
+      "chapter_summary": "The patient was positioned on the operating table, and the surgical team prepared the operating room. General anesthesia was administered, and the surgical site was prepped with drapes and incision lines marked."
+    },
+    {
+      "chapter_number": 2,
+      "chapter_title": "Surgical Approach & Incision",
+      "start_time": 179,
+      "end_time": 358,
+      "chapter_summary": "The skin incision was made, and the surgical team proceeded with sternalotomy. Bleeding control measures were implemented, and the great saphenous vein was harvested from the patient's leg."
+    },
+    {
+      "chapter_number": 3,
+      "chapter_title": "Exposure & Dissection",
+      "start_time": 358,
+      "end_time": 537,
+      "chapter_summary": "The pericardium was opened to expose the heart, and the coronary arteries were examined. The internal mammary artery was harvested, and the lungs were inspected."
+    },
+    {
+      "chapter_number": 4,
+      "chapter_title": "Main Procedure",
+      "start_time": 537,
+      "end_time": 716,
+      "chapter_summary": "The heart was arrested, and incisions were made on the right coronary artery and the left anterior descending artery. Venous and arterial grafts were prepared and connected to the coronary arteries."
+    },
+    {
+      "chapter_number": 5,
+      "chapter_title": "Hemostasis & Inspection",
+      "start_time": 716,
+      "end_time": 894,
+      "chapter_summary": "Suturing was performed to secure the grafts, and the surgical team ensured proper blood flow through the grafts. The heart-lung machine tubing was removed, and the surgical site was inspected for hemostasis."
+    },
+    {
+      "chapter_number": 6,
+      "chapter_title": "Closure",
+      "start_time": 894,
+      "end_time": 894,
+      "chapter_summary": "The surgical site was prepared for closure, and suturing was performed to close the incisions."
+    },
+    {
+      "chapter_number": 7,
+      "chapter_title": "Postoperative Care Preparation",
+      "start_time": 894,
+      "end_time": 894,
+      "chapter_summary": "The patient was prepared for postoperative care, including monitoring vital signs and ensuring proper wound care."
+    }
+  ],
+  "operative_note": {
+    "title": "Coronary Artery Bypass Grafting (CABG)",
+    "SOAP": {
+      "Subjective": "I performed a coronary artery bypass grafting (CABG) on a patient with severe coronary artery disease, specifically highlighting the left main stem. The patient was positioned on the operating table, and general anesthesia was administered.",
+      "Objective": "I identified the need for CABG based on the patient's diagnostic imaging, which showed narrowing of three coronary arteries. I observed the surgical team performing the sternalotomy and harvesting the great saphenous vein from the patient's leg. The heart was arrested, and incisions were made on the right coronary artery and the left anterior descending artery. Venous and arterial grafts were prepared and connected to the coronary arteries.",
+      "Assessment": "I assessed the procedure as successful, with proper graft connections and hemostasis achieved. The patient's vital signs were stable throughout the procedure, and no complications were observed.",
+      "Plan": "I closed the surgical site in layers and ensured proper hemostasis. The patient was prepared for postoperative care, including monitoring vital signs and ensuring proper wound care."
+    }
+  }
+}
