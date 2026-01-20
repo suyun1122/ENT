@@ -494,7 +494,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     setChapters(null);
 
     try {
-      const startResponse = await fetch(`/api/analysis/${videoId}?type=chapters`, { method: "POST" });
+      // Use force=true to regenerate from TwelveLabs API
+      const startResponse = await fetch(`/api/analysis/${videoId}?type=chapters&force=true`, { method: "POST" });
       await startResponse.json();
       pollSurgicalAnalysis(videoId, 'timeline');
     } catch (error) {
@@ -510,7 +511,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     setOperatingNote(null);
 
     try {
-      const startResponse = await fetch(`/api/analysis/${videoId}?type=soap`, { method: "POST" });
+      // Use force=true to regenerate from TwelveLabs API
+      const startResponse = await fetch(`/api/analysis/${videoId}?type=soap&force=true`, { method: "POST" });
       await startResponse.json();
       pollSurgicalAnalysis(videoId, 'soap');
     } catch (error) {

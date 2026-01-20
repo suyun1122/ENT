@@ -270,10 +270,12 @@ export async function PATCH(request, { params }) {
 
         // 1. Try to load existing data from Vercel Blob first
         let existingData = null;
+        let existingBlobUrl = null;
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
                 const blobInfo = await head(`analysis/${videoId}.json`);
                 if (blobInfo) {
+                    existingBlobUrl = blobInfo.url; // Save URL for deletion later
                     const response = await fetch(blobInfo.url);
                     existingData = JSON.parse(await response.text());
                     console.log('[Surgical Analysis] Loaded existing data from Blob');
@@ -315,16 +317,16 @@ export async function PATCH(request, { params }) {
             try {
                 const blobPath = `analysis/${videoId}.json`;
 
-                // Delete existing blob first to avoid "blob already exists" error
-                try {
-                    await del(blobPath);
-                    console.log('[Surgical Analysis] Deleted existing blob before update');
-                    // Longer delay to ensure deletion is fully processed and CDN cache is cleared
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (delError) {
-                    console.log('[Surgical Analysis] No existing blob to delete or delete failed:', delError.message);
-                    // Still wait a bit in case of timing issues
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                // Delete existing blob first using URL (del() requires URL, not path)
+                if (existingBlobUrl) {
+                    try {
+                        await del(existingBlobUrl);
+                        console.log('[Surgical Analysis] Deleted existing blob:', existingBlobUrl);
+                        // Wait for deletion to propagate
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    } catch (delError) {
+                        console.log('[Surgical Analysis] Delete failed (continuing anyway):', delError.message);
+                    }
                 }
 
                 // Create new blob with updated data
@@ -429,11 +431,14 @@ export async function POST(request, { params }) {
             console.log('[Surgical Analysis] Deleted local file:', analysisPath);
         }
 
-        // Delete from Vercel Blob Storage if available
+        // Delete from Vercel Blob Storage if available (del() requires URL, not path)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                await del(`analysis/${videoId}.json`);
-                console.log('[Surgical Analysis] Deleted from Vercel Blob Storage');
+                const blobInfo = await head(`analysis/${videoId}.json`);
+                if (blobInfo && blobInfo.url) {
+                    await del(blobInfo.url);
+                    console.log('[Surgical Analysis] Deleted from Vercel Blob Storage');
+                }
             } catch (blobError) {
                 console.warn('[Surgical Analysis] Failed to delete from Vercel Blob (file may not exist):', blobError.message);
             }
@@ -451,12 +456,14 @@ export async function POST(request, { params }) {
         console.log(`[Surgical Analysis] Partial refresh (${type}) - nullifying cached ${type} data`);
 
         let existingData = null;
+        let existingBlobUrl = null;
 
         // Load existing data
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
                 const blobInfo = await head(`analysis/${videoId}.json`);
                 if (blobInfo) {
+                    existingBlobUrl = blobInfo.url;
                     const response = await fetch(blobInfo.url);
                     existingData = JSON.parse(await response.text());
                 }
@@ -483,7 +490,10 @@ export async function POST(request, { params }) {
             // Save updated data with nullified field
             if (process.env.BLOB_READ_WRITE_TOKEN) {
                 try {
-                    await del(`analysis/${videoId}.json`);
+                    // Delete existing blob using URL (del() requires URL, not path)
+                    if (existingBlobUrl) {
+                        await del(existingBlobUrl);
+                    }
                     await put(`analysis/${videoId}.json`, JSON.stringify(existingData, null, 2), {
                         access: 'public',
                         contentType: 'application/json',
@@ -641,9 +651,12 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
         // Save to Vercel Blob FIRST (works in production)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
-                // Delete existing blob first to avoid conflicts
+                // Delete existing blob first to avoid conflicts (del() requires URL, not path)
                 try {
-                    await del(`analysis/${videoId}.json`);
+                    const existingBlob = await head(`analysis/${videoId}.json`);
+                    if (existingBlob && existingBlob.url) {
+                        await del(existingBlob.url);
+                    }
                 } catch (delError) {
                     // Ignore - file may not exist
                 }
