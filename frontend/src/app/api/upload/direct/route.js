@@ -1,8 +1,8 @@
 import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
 
-// Route segment config for large file uploads (200MB max)
-export const maxDuration = 300; // 5 minutes for large uploads
+// Route segment config
+export const maxDuration = 60; // 1 minute should be enough now (just API call)
 export const dynamic = 'force-dynamic';
 
 // Lazy initialization to avoid build-time errors
@@ -16,16 +16,15 @@ function getTwelveLabsClient() {
 
 export async function POST(request) {
     try {
-        const formData = await request.formData();
-        const videoFile = formData.get('video');
-        const filename = formData.get('filename');
+        const body = await request.json();
+        const { blobUrl, filename } = body;
 
-        if (!videoFile || !filename) {
-            return NextResponse.json({ error: 'video and filename are required' }, { status: 400 });
+        if (!blobUrl || !filename) {
+            return NextResponse.json({ error: 'blobUrl and filename are required' }, { status: 400 });
         }
 
-        console.log('[Direct Upload] Starting upload:', filename);
-        console.log('[Direct Upload] File size:', videoFile.size, 'bytes');
+        console.log('[Direct Upload] Starting upload from blob URL:', blobUrl);
+        console.log('[Direct Upload] Filename:', filename);
 
         // Get the index ID
         const indexId = process.env.NEXT_PUBLIC_TWELVELABS_MARENGO_INDEX_ID;
@@ -33,26 +32,24 @@ export async function POST(request) {
             return NextResponse.json({ error: 'Index ID not configured' }, { status: 500 });
         }
 
-        // Convert to File object if needed
-        const file = new File([videoFile], filename, { type: videoFile.type || 'video/mp4' });
-
-        // Upload directly to TwelveLabs
-        console.log('[Direct Upload] Uploading to TwelveLabs...');
+        // Upload to TwelveLabs using URL (no download needed!)
+        console.log('[Direct Upload] Sending URL to TwelveLabs...');
         const task = await getTwelveLabsClient().tasks.create({
             indexId: indexId,
-            videoFile: file,
+            videoUrl: blobUrl,  // TwelveLabs will fetch from this URL directly
         });
 
         console.log('[Direct Upload] Task created, Task ID:', task.id);
 
-        // Return immediately with task ID - don't wait for indexing
+        // Return with task ID and blob URL (for tool detection later)
         return NextResponse.json({
             success: true,
             message: 'Video upload started, indexing in progress',
             taskId: task.id,
             filename: filename,
+            blobUrl: blobUrl,
             status: 'indexing',
-        }, { status: 202 }); // 202 Accepted
+        }, { status: 202 });
 
     } catch (error) {
         console.error('[Direct Upload] Error:', error);

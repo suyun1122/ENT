@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { upload } from "@vercel/blob/client";
 import { useUpload } from "../contexts/UploadContext";
 import {
   ArrowUpIcon,
@@ -75,37 +76,35 @@ export default function UploadVideo() {
   };
 
   // Upload video to Railway for tool detection via API proxy (avoids CORS)
-  const uploadToRailwayForDetection = async (videoId, videoFile) => {
+  const uploadToRailwayForDetection = async (videoId, blobUrl) => {
     try {
-      console.log(`[Railway Upload] Uploading video via API proxy for ${videoId}...`);
+      console.log(`[Railway Upload] Starting detection with blob URL for ${videoId}...`);
 
-      const formData = new FormData();
-      formData.append('video_id', videoId);
-      formData.append('video', videoFile);
-
-      const response = await fetch('/api/detect-tools/upload', {
+      // Use POST to start detection with blob URL
+      const response = await fetch(`/api/detect-tools/${videoId}`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blobUrl }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        console.log('[Railway Upload] Upload successful:', result);
+        console.log('[Railway Upload] Detection started:', result);
         return true;
       } else {
         const errorText = await response.text();
-        console.warn('[Railway Upload] Upload failed:', response.status, errorText);
+        console.warn('[Railway Upload] Detection failed:', response.status, errorText);
         return false;
       }
     } catch (error) {
-      console.warn('[Railway Upload] Upload error:', error);
+      console.warn('[Railway Upload] Detection error:', error);
       return false;
     }
   };
 
-  // Poll for indexing status (no blob needed)
-  // Railway upload starts as soon as we get videoId (before indexing completes)
-  const pollIndexingStatus = async (taskId, videoFile) => {
+  // Poll for indexing status
+  // Tool detection starts after we get videoId and blob URL
+  const pollIndexingStatus = async (taskId, blobUrl) => {
     const POLL_INTERVAL = 5000;
     const MAX_POLLS = 120;
     let pollCount = 0;
@@ -126,28 +125,28 @@ export default function UploadVideo() {
             setStage(data.status);
           }
 
-          // Start Railway upload as soon as we have videoId (don't wait for indexing to complete)
-          if (data.videoId && videoFile && !railwayUploadStarted) {
+          // Start Railway detection as soon as we have videoId (don't wait for indexing to complete)
+          if (data.videoId && blobUrl && !railwayUploadStarted) {
             railwayUploadStarted = true;
-            console.log('[Indexing Status] Got videoId, starting Railway upload in parallel. videoId:', data.videoId);
+            console.log('[Indexing Status] Got videoId, starting tool detection in parallel. videoId:', data.videoId);
 
-            // Start detection tracking immediately (before Railway upload completes)
+            // Start detection tracking immediately
             console.log('[Indexing Status] Calling startDetection...');
             startDetection(data.videoId);
 
-            // Start Railway upload in background (don't await)
-            uploadToRailwayForDetection(data.videoId, videoFile)
+            // Start tool detection in background using blob URL (don't await)
+            uploadToRailwayForDetection(data.videoId, blobUrl)
               .then(success => {
                 if (success) {
-                  console.log('[Indexing Status] Railway upload succeeded!');
+                  console.log('[Indexing Status] Tool detection started!');
                   waitForDetectionCompletion(data.videoId);
                 } else {
-                  console.warn('[Indexing Status] Railway upload failed - tool detection unavailable');
+                  console.warn('[Indexing Status] Tool detection failed to start');
                   completeDetection(); // Clear detection state on failure
                 }
               })
               .catch(err => {
-                console.warn('[Indexing Status] Railway upload error:', err);
+                console.warn('[Indexing Status] Tool detection error:', err);
                 completeDetection(); // Clear detection state on error
               });
           }
@@ -177,39 +176,56 @@ export default function UploadVideo() {
   };
 
   const uploadVideo = async (file) => {
-    console.log("Starting direct video upload (no Blob)...");
+    console.log("Starting video upload flow...");
     startUpload(file.name);
 
     try {
-      // Step 1: Upload directly to TwelveLabs
-      console.log("[Direct Upload] Step 1: Uploading directly to TwelveLabs...");
+      // Step 1: Upload to Vercel Blob using client-side upload (bypasses 4.5MB API limit)
+      console.log("[Upload] Step 1: Uploading to Vercel Blob (client-side)...");
+      setStage('uploading');
 
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('filename', file.name);
+      const blob = await upload(`videos/${Date.now()}-${file.name}`, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload/token',
+        onUploadProgress: (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          updateProgress(percent);
+          console.log(`[Upload] Blob upload progress: ${percent}%`);
+        },
+      });
+
+      console.log("[Upload] Blob upload complete:", blob.url);
+      updateProgress(100);
+
+      // Step 2: Send blob URL to server for TwelveLabs indexing
+      console.log("[Upload] Step 2: Starting TwelveLabs indexing...");
+      setStage('validating');
 
       const uploadResponse = await fetch("/api/upload/direct", {
         method: "POST",
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          filename: file.name,
+        }),
       });
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || "Failed to upload video");
+        throw new Error(errorData.error || "Failed to start video indexing");
       }
 
       const uploadData = await uploadResponse.json();
-      console.log("[Direct Upload] Upload started, taskId:", uploadData.taskId);
-      updateProgress(100); // Upload complete
+      console.log("[Upload] Indexing started, taskId:", uploadData.taskId);
 
-      // Step 2: Poll for indexing completion
+      // Step 3: Poll for indexing completion
       setStage('indexing');
-      console.log("[Direct Upload] Step 2: Polling for indexing completion...");
+      console.log("[Upload] Step 3: Polling for indexing completion...");
 
-      const videoId = await pollIndexingStatus(uploadData.taskId, file);
-      console.log("[Direct Upload] Video indexed successfully, videoId:", videoId);
+      const videoId = await pollIndexingStatus(uploadData.taskId, blob.url);
+      console.log("[Upload] Video indexed successfully, videoId:", videoId);
 
-      console.log("[Direct Upload] Calling completeUpload...");
+      console.log("[Upload] Calling completeUpload...");
       completeUpload(videoId);
 
       return {
