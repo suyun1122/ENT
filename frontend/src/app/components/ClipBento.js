@@ -902,9 +902,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                 {activeTab === 'timeline' && (
                   <div className="bg-white rounded-[20px] p-6 outline outline-1 outline-offset-[-1px] outline-gray-300">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Surgical Phase Timeline
-          </h3>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Surgical Phase Timeline
+            </h3>
+            {surgicalAnalysisData?._lastUpdated && (
+              <p className="text-xs text-gray-400 mt-1">
+                Last updated: {new Date(surgicalAnalysisData._lastUpdated).toLocaleString()}
+              </p>
+            )}
+          </div>
           <div className="flex items-center space-x-2">
             {chapters && chapters.length > 0 && (
               <div className="flex items-center space-x-2 px-3 py-1 rounded-full outline outline-1 outline-offset-[-1px] outline-gray-300">
@@ -1003,6 +1010,11 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                   <p className="text-sm text-gray-600">
                     Subjective, Objective, Assessment & Plan
                   </p>
+                  {surgicalAnalysisData?._lastUpdated && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Last updated: {new Date(surgicalAnalysisData._lastUpdated).toLocaleString()}
+                    </p>
+                  )}
                             </div>
                             <div className="flex items-center space-x-2">
                               <button

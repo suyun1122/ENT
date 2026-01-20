@@ -33,10 +33,12 @@ async function fetchBlobData(videoId) {
         });
         if (response.ok) {
             const data = await response.json();
-            console.log(`[Surgical Analysis] Loaded from Blob: ${blobUrl}`);
+            // Log when data was last updated (if available)
+            const lastUpdated = data._lastUpdated || 'unknown';
+            console.log(`[Surgical Analysis] Loaded from Blob (updated: ${lastUpdated})`);
             return data;
         }
-        console.log(`[Surgical Analysis] Blob fetch returned ${response.status}: ${blobUrl}`);
+        console.log(`[Surgical Analysis] Blob fetch returned ${response.status}`);
         return null;
     } catch (error) {
         console.log(`[Surgical Analysis] Blob fetch error: ${error.message}`);
@@ -70,6 +72,12 @@ async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
     const blobPath = `analysis/${videoId}.json`;
     const token = process.env.BLOB_READ_WRITE_TOKEN;
 
+    // Add timestamp for tracking when data was last updated
+    const dataWithTimestamp = {
+        ...data,
+        _lastUpdated: new Date().toISOString()
+    };
+
     console.log(`[Surgical Analysis] Saving to blob: ${blobPath}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -82,7 +90,7 @@ async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
             await new Promise(resolve => setTimeout(resolve, deleted ? 500 : 100));
 
             // Create new blob with explicit token
-            const blob = await put(blobPath, JSON.stringify(data, null, 2), {
+            const blob = await put(blobPath, JSON.stringify(dataWithTimestamp, null, 2), {
                 access: 'public',
                 contentType: 'application/json',
                 addRandomSuffix: false,
@@ -90,7 +98,7 @@ async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
                 token
             });
 
-            console.log(`[Surgical Analysis] Saved to Blob: ${blob.url}`);
+            console.log(`[Surgical Analysis] Saved to Blob: ${blob.url} at ${dataWithTimestamp._lastUpdated}`);
             return blob;
         } catch (error) {
             console.log(`[Surgical Analysis] Blob save attempt ${attempt + 1}/${maxRetries + 1} failed: ${error.message}`);
