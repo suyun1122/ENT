@@ -390,33 +390,58 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const data = await response.json();
 
         if (data.status === "completed") {
-          // For partial refresh, check if the specific field has data (not null)
-          // If null, the refresh is still in progress
+          // For partial refresh, check if _lastUpdated is newer than when refresh started
+          const lastUpdated = data.data?._lastUpdated || null;
+          const refreshStarted = refreshStartTimeRef.current;
+          const isDataNewer = lastUpdated && refreshStarted && new Date(lastUpdated) > new Date(refreshStarted);
+
+          console.log(`[Poll] ${refreshType}: completed, lastUpdated=${lastUpdated}, refreshStarted=${refreshStarted}, isNewer=${isDataNewer}, attempt=${attempts}`);
+
           if (refreshType === 'timeline') {
-            if (data.data?.chapters !== null && data.data?.chapters !== undefined) {
+            const hasChapters = data.data?.chapters !== null && data.data?.chapters !== undefined;
+            console.log(`[Poll] timeline: hasChapters=${hasChapters}, isDataNewer=${isDataNewer}`);
+
+            // Accept data if: it has chapters AND (data is newer OR no refresh timestamp)
+            if (hasChapters && (isDataNewer || !refreshStarted)) {
+              console.log(`[Poll] timeline: Setting chapters (${data.data.chapters.length} items)`);
               setChapters(data.data.chapters);
+              setSurgicalAnalysisData(data.data); // Update full data to get _lastUpdated
               setIsLoadingTimeline(false);
+              refreshStartTimeRef.current = null; // Clear refresh tracking
             } else {
-              // chapters is null - still processing, continue polling
+              // Data is old or chapters is null - still processing, continue polling
+              console.log(`[Poll] timeline: waiting for newer data, continuing polling...`);
               attempts++;
               if (attempts < maxAttempts) {
                 setTimeout(poll, 5000);
               } else {
+                console.log(`[Poll] timeline: max attempts reached, stopping`);
                 setIsLoadingTimeline(false);
+                refreshStartTimeRef.current = null;
               }
             }
             return;
           } else if (refreshType === 'soap') {
-            if (data.data?.operative_note !== null && data.data?.operative_note !== undefined) {
+            const hasSOAP = data.data?.operative_note !== null && data.data?.operative_note !== undefined;
+            console.log(`[Poll] soap: hasSOAP=${hasSOAP}, isDataNewer=${isDataNewer}`);
+
+            // Accept data if: it has operative_note AND (data is newer OR no refresh timestamp)
+            if (hasSOAP && (isDataNewer || !refreshStarted)) {
+              console.log(`[Poll] soap: Setting operative_note`);
               setOperatingNote(data.data.operative_note);
+              setSurgicalAnalysisData(data.data); // Update full data to get _lastUpdated
               setIsLoadingSOAP(false);
+              refreshStartTimeRef.current = null; // Clear refresh tracking
             } else {
-              // operative_note is null - still processing, continue polling
+              // Data is old or operative_note is null - still processing, continue polling
+              console.log(`[Poll] soap: waiting for newer data, continuing polling...`);
               attempts++;
               if (attempts < maxAttempts) {
                 setTimeout(poll, 5000);
               } else {
+                console.log(`[Poll] soap: max attempts reached, stopping`);
                 setIsLoadingSOAP(false);
+                refreshStartTimeRef.current = null;
               }
             }
             return;
@@ -441,6 +466,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         } else if (data.status === "processing" || data.status === "not_found") {
           // Show estimated progress based on elapsed time
           // TwelveLabs analysis typically takes 1-2 minutes
+          console.log(`[Poll] ${refreshType}: status=${data.status}, attempt=${attempts}`);
+
           if (refreshType === 'all') {
             const estimatedProgress = Math.min(90, Math.round((attempts / 20) * 90)); // ~100s to 90%
 
@@ -457,11 +484,17 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             setSurgicalAnalysisProgress(estimatedProgress);
             setSurgicalAnalysisStage(stage);
           }
+          // For partial refresh, just continue polling without progress updates
 
           attempts++;
           if (attempts < maxAttempts) {
             setTimeout(poll, 5000);
           } else {
+            if (refreshType === 'timeline') {
+              setIsLoadingTimeline(false);
+            } else if (refreshType === 'soap') {
+              setIsLoadingSOAP(false);
+            }
             throw new Error('Surgical analysis processing timeout - please try again later');
           }
         } else if (data.status === "error") {
@@ -486,12 +519,20 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingSOAP, setIsLoadingSOAP] = useState(false);
 
+  // Track when refresh started (to detect when new data arrives)
+  const refreshStartTimeRef = React.useRef(null);
+
   // Refresh only Timeline/chapters - fetches from Twelve Labs API
   const refreshTimeline = async () => {
     if (!videoId || isLoadingTimeline) return;
 
     setIsLoadingTimeline(true);
-    setChapters(null);
+    // Don't set chapters to null - keep showing old data until new data arrives
+    // setChapters(null);
+
+    // Record when refresh started
+    refreshStartTimeRef.current = new Date().toISOString();
+    console.log(`[Refresh] Timeline refresh started at ${refreshStartTimeRef.current}`);
 
     try {
       // Use force=true to regenerate from TwelveLabs API
@@ -499,6 +540,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
       await startResponse.json();
       pollSurgicalAnalysis(videoId, 'timeline');
     } catch (error) {
+      console.error('[Refresh] Timeline refresh failed:', error);
       setIsLoadingTimeline(false);
     }
   };
@@ -508,7 +550,12 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     if (!videoId || isLoadingSOAP) return;
 
     setIsLoadingSOAP(true);
-    setOperatingNote(null);
+    // Don't set operatingNote to null - keep showing old data until new data arrives
+    // setOperatingNote(null);
+
+    // Record when refresh started
+    refreshStartTimeRef.current = new Date().toISOString();
+    console.log(`[Refresh] SOAP refresh started at ${refreshStartTimeRef.current}`);
 
     try {
       // Use force=true to regenerate from TwelveLabs API
@@ -516,6 +563,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
       await startResponse.json();
       pollSurgicalAnalysis(videoId, 'soap');
     } catch (error) {
+      console.error('[Refresh] SOAP refresh failed:', error);
       setIsLoadingSOAP(false);
     }
   };

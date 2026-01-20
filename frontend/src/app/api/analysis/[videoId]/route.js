@@ -57,12 +57,17 @@ async function deleteBlobIfExists(videoId) {
     }
 
     try {
-        console.log(`[Surgical Analysis] Attempting to delete: ${blobUrl}`);
+        console.log(`[Surgical Analysis] Attempting to delete blob at: ${blobUrl}`);
         await del(blobUrl, { token });
         console.log(`[Surgical Analysis] Successfully deleted blob`);
         return true;
     } catch (error) {
-        console.log(`[Surgical Analysis] Delete failed: ${error.message}`);
+        // 404 is expected if blob doesn't exist - not an error
+        if (error.message?.includes('not found') || error.message?.includes('404')) {
+            console.log(`[Surgical Analysis] Blob not found (OK to proceed)`);
+            return false;
+        }
+        console.error(`[Surgical Analysis] Delete error: ${error.message}`);
         return false;
     }
 }
@@ -72,22 +77,31 @@ async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
     const blobPath = `analysis/${videoId}.json`;
     const token = process.env.BLOB_READ_WRITE_TOKEN;
 
+    if (!token) {
+        console.error(`[Surgical Analysis] BLOB_READ_WRITE_TOKEN is not set!`);
+        throw new Error('BLOB_READ_WRITE_TOKEN is not configured');
+    }
+
     // Add timestamp for tracking when data was last updated
     const dataWithTimestamp = {
         ...data,
         _lastUpdated: new Date().toISOString()
     };
 
-    console.log(`[Surgical Analysis] Saving to blob: ${blobPath}`);
+    console.log(`[Surgical Analysis] ===== SAVING TO BLOB =====`);
+    console.log(`[Surgical Analysis] Path: ${blobPath}`);
+    console.log(`[Surgical Analysis] Timestamp: ${dataWithTimestamp._lastUpdated}`);
+    console.log(`[Surgical Analysis] Has chapters: ${dataWithTimestamp.chapters !== null && dataWithTimestamp.chapters !== undefined}`);
+    console.log(`[Surgical Analysis] Has operative_note: ${dataWithTimestamp.operative_note !== null && dataWithTimestamp.operative_note !== undefined}`);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             // Try to delete existing blob first
             const deleted = await deleteBlobIfExists(videoId);
-            console.log(`[Surgical Analysis] Delete result: ${deleted}`);
+            console.log(`[Surgical Analysis] Delete before save: ${deleted ? 'deleted' : 'not found or failed'}`);
 
             // Delay after delete to ensure propagation
-            await new Promise(resolve => setTimeout(resolve, deleted ? 500 : 100));
+            await new Promise(resolve => setTimeout(resolve, deleted ? 1000 : 200));
 
             // Create new blob with explicit token
             const blob = await put(blobPath, JSON.stringify(dataWithTimestamp, null, 2), {
@@ -98,17 +112,23 @@ async function saveToBlobWithRetry(videoId, data, maxRetries = 3) {
                 token
             });
 
-            console.log(`[Surgical Analysis] Saved to Blob: ${blob.url} at ${dataWithTimestamp._lastUpdated}`);
+            console.log(`[Surgical Analysis] ===== BLOB SAVED SUCCESSFULLY =====`);
+            console.log(`[Surgical Analysis] URL: ${blob.url}`);
+            console.log(`[Surgical Analysis] Timestamp: ${dataWithTimestamp._lastUpdated}`);
             return blob;
         } catch (error) {
-            console.log(`[Surgical Analysis] Blob save attempt ${attempt + 1}/${maxRetries + 1} failed: ${error.message}`);
+            console.error(`[Surgical Analysis] Blob save attempt ${attempt + 1}/${maxRetries + 1} FAILED: ${error.message}`);
+            console.error(`[Surgical Analysis] Error details:`, error);
 
             if (attempt === maxRetries) {
+                console.error(`[Surgical Analysis] All ${maxRetries + 1} attempts failed!`);
                 throw error;
             }
 
             // Wait longer before retry
-            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            const delay = 1500 * (attempt + 1);
+            console.log(`[Surgical Analysis] Waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 }
@@ -299,9 +319,35 @@ export async function GET(request, { params }) {
 
     console.log('[Surgical Analysis] GET request for video:', videoId);
 
-    // 1. Check Vercel Blob Storage first (using direct URL fetch)
+    // 1. Check if ANY processing is in progress for this videoId
+    // Check all possible processing keys: videoId-all, videoId-chapters, videoId-soap
+    const processingKeys = [`${videoId}-all`, `${videoId}-chapters`, `${videoId}-soap`];
+    for (const key of processingKeys) {
+        if (processingStatus.has(key)) {
+            const status = processingStatus.get(key);
+            // Only report as processing if actively processing (not completed/error)
+            if (status.stage !== 'completed' && status.stage !== 'error') {
+                console.log(`[Surgical Analysis] Processing in progress (${key}):`, status);
+                return NextResponse.json({
+                    status: 'processing',
+                    videoId,
+                    processingType: key.split('-')[1], // 'all', 'chapters', or 'soap'
+                    ...status
+                });
+            }
+        }
+    }
+
+    // 2. Check Vercel Blob Storage (using direct URL fetch)
     const blobData = await fetchBlobData(videoId);
     if (blobData) {
+        // Check if partial data is null (meaning partial refresh is in progress but status was cleared)
+        // This can happen if the processingStatus was cleared but data hasn't been updated yet
+        const hasValidChapters = blobData.chapters !== null && blobData.chapters !== undefined;
+        const hasValidSOAP = blobData.operative_note !== null && blobData.operative_note !== undefined;
+
+        console.log(`[Surgical Analysis] Blob data: chapters=${hasValidChapters}, soap=${hasValidSOAP}`);
+
         return NextResponse.json({
             status: 'completed',
             videoId,
@@ -309,7 +355,7 @@ export async function GET(request, { params }) {
         });
     }
 
-    // 2. Fallback to local filesystem ONLY if Blob is not configured (development only)
+    // 3. Fallback to local filesystem ONLY if Blob is not configured (development only)
     // In production (BLOB_STORE_BASE_URL is set), we should NOT use local files
     // because they might be stale (deployed with build, never updated)
     if (!BLOB_STORE_BASE_URL) {
@@ -327,17 +373,6 @@ export async function GET(request, { params }) {
                 console.error('[Surgical Analysis] Error reading local file:', error);
             }
         }
-    }
-
-    // 3. Check if processing is in progress
-    if (processingStatus.has(videoId)) {
-        const status = processingStatus.get(videoId);
-        console.log('[Surgical Analysis] Processing in progress:', status);
-        return NextResponse.json({
-            status: 'processing',
-            videoId,
-            ...status
-        });
     }
 
     console.log('[Surgical Analysis] Not found');
@@ -498,39 +533,11 @@ export async function POST(request, { params }) {
         }
     }
 
-    // For partial refresh (chapters or soap only), null out that specific part in cache
-    // This ensures polling will wait for new data instead of returning cached data
+    // For partial refresh (chapters or soap only), we DON'T nullify the existing data anymore
+    // Instead, we'll use the processing status to signal that refresh is in progress
+    // This prevents data loss if the refresh fails
     if (type !== 'all') {
-        console.log(`[Surgical Analysis] Partial refresh (${type}) - nullifying cached ${type} data`);
-
-        // Load existing data from Blob or filesystem
-        let existingData = await fetchBlobData(videoId);
-
-        if (!existingData) {
-            const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-            if (fs.existsSync(analysisPath)) {
-                existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-            }
-        }
-
-        if (existingData) {
-            // Null out the specific part being refreshed
-            if (type === 'chapters') {
-                existingData.chapters = null;
-            } else if (type === 'soap') {
-                existingData.operative_note = null;
-            }
-
-            // Save updated data with nullified field
-            if (process.env.BLOB_READ_WRITE_TOKEN) {
-                try {
-                    await saveToBlobWithRetry(videoId, existingData);
-                    console.log(`[Surgical Analysis] Nullified ${type} in Blob cache`);
-                } catch (blobError) {
-                    console.error('[Surgical Analysis] Failed to update Blob:', blobError);
-                }
-            }
-        }
+        console.log(`[Surgical Analysis] Partial refresh (${type}) - keeping existing data until new data is ready`);
     }
 
     // Start processing
@@ -594,6 +601,7 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
 
         // Parse the response
         let jsonString = response.data || response.response || "{}";
+        console.log(`[Surgical Analysis] Raw response length: ${jsonString.length} chars`);
 
         // Remove markdown code fences if present
         jsonString = jsonString
@@ -602,7 +610,9 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
             .replace(/\s*```$/i, '')
             .trim();
 
+        console.log(`[Surgical Analysis] Parsing JSON response...`);
         const parsedData = JSON.parse(jsonString);
+        console.log(`[Surgical Analysis] Parsed data - chapters: ${!!parsedData.chapters}, operative_note: ${!!parsedData.operative_note}`);
 
         processingStatus.set(processingKey, { progress: 80, stage: 'saving_results' });
 
@@ -636,6 +646,7 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
                 }
             } else {
                 // No existing data - for partial types, we might need to initialize missing parts
+                console.log(`[Surgical Analysis] No existing data found for partial merge`);
                 if (type === 'chapters') {
                     finalData = {
                         chapters: parsedData.chapters,
@@ -649,6 +660,10 @@ async function processSurgicalAnalysis(videoId, type = 'all') {
                 }
             }
         }
+
+        console.log(`[Surgical Analysis] Final data to save:`);
+        console.log(`[Surgical Analysis]   - chapters: ${finalData.chapters ? finalData.chapters.length + ' chapters' : 'null'}`);
+        console.log(`[Surgical Analysis]   - operative_note: ${finalData.operative_note ? 'present' : 'null'}`);
 
         // Save to Vercel Blob FIRST (works in production)
         if (process.env.BLOB_READ_WRITE_TOKEN) {
