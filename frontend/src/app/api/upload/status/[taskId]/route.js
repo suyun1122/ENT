@@ -1,6 +1,5 @@
 import { TwelveLabs } from 'twelvelabs-js';
 import { NextResponse } from 'next/server';
-import { del } from '@vercel/blob';
 
 // Lazy initialization to avoid build-time errors
 let twelvelabs_client = null;
@@ -14,14 +13,12 @@ function getTwelveLabsClient() {
 export async function GET(request, { params }) {
     try {
         const { taskId } = await params;
-        const { searchParams } = new URL(request.url);
-        const blobUrl = searchParams.get('blobUrl');
 
         if (!taskId) {
             return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
         }
 
-        console.log('[Upload Status] Checking task:', taskId, 'blobUrl:', blobUrl ? 'provided' : 'none');
+        console.log('[Upload Status] Checking task:', taskId);
 
         // Get task status from TwelveLabs
         const client = getTwelveLabsClient();
@@ -32,32 +29,12 @@ export async function GET(request, { params }) {
         // Use request URL to get the correct base URL (works on both localhost and Vercel)
         const requestUrl = new URL(request.url);
         const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
-        console.log('[Upload Status] Using baseUrl:', baseUrl);
 
         if (task.status === 'ready') {
             console.log('[Upload Status] Video ready, Video ID:', task.videoId);
 
-            // Trigger tool detection with blob URL (direct video file, not HLS stream)
-            if (blobUrl) {
-                console.log('[Upload Status] Triggering tool detection with blob URL...');
-                console.log('[Upload Status] Blob URL:', blobUrl);
-
-                fetch(`${baseUrl}/api/detect-tools/${task.videoId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ blobUrl: blobUrl }),
-                })
-                    .then(async res => {
-                        const text = await res.text();
-                        console.log('[Upload Status] Tool detection response status:', res.status);
-                        console.log('[Upload Status] Tool detection response:', text);
-                    })
-                    .catch(err => console.error('[Upload Status] Tool detection fetch error:', err));
-            } else {
-                console.warn('[Upload Status] No blob URL provided, skipping tool detection');
-            }
-
             // Trigger post-processing (surgical analysis)
+            // Tool detection is now handled directly via frontend upload to Railway
             fetch(`${baseUrl}/api/analysis/${task.videoId}`, { method: 'POST' })
                 .then(res => {
                     if (res.ok) console.log('[Upload Status] Surgical analysis started');
@@ -69,8 +46,6 @@ export async function GET(request, { params }) {
                 status: 'ready',
                 videoId: task.videoId,
                 message: 'Video indexed successfully',
-                // Return flag indicating tool detection was triggered
-                toolDetectionTriggered: !!blobUrl,
             });
         } else if (task.status === 'failed') {
             console.log('[Upload Status] Task failed');
@@ -82,7 +57,7 @@ export async function GET(request, { params }) {
             // Still processing (pending, validating, indexing, etc.)
             return NextResponse.json({
                 status: task.status,
-                videoId: task.videoId || null, // Return videoId if available
+                videoId: task.videoId || null,
                 estimatedTime: task.estimatedTime || 0,
                 message: 'Video is being indexed',
             });
@@ -92,37 +67,6 @@ export async function GET(request, { params }) {
         console.error('[Upload Status] Error:', error);
         return NextResponse.json({
             error: 'Failed to check status',
-            message: error.message
-        }, { status: 500 });
-    }
-}
-
-// POST endpoint to cleanup blob after indexing is complete
-export async function POST(request, { params }) {
-    try {
-        const { taskId } = await params;
-        const { blobUrl } = await request.json();
-
-        if (!blobUrl) {
-            return NextResponse.json({ error: 'blobUrl is required' }, { status: 400 });
-        }
-
-        console.log('[Upload Status] Cleaning up blob for task:', taskId);
-
-        // Delete temp video from Blob
-        try {
-            await del(blobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN });
-            console.log('[Upload Status] Deleted temp video from Blob');
-        } catch (deleteError) {
-            console.warn('[Upload Status] Failed to delete temp video from Blob:', deleteError);
-        }
-
-        return NextResponse.json({ success: true });
-
-    } catch (error) {
-        console.error('[Upload Status] Cleanup error:', error);
-        return NextResponse.json({
-            error: 'Cleanup failed',
             message: error.message
         }, { status: 500 });
     }

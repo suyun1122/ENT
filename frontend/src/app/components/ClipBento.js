@@ -19,6 +19,7 @@ import { ToolFilterPanel } from "./ToolDetectionOverlay";
 import ToolUsageTimeline from "./ToolUsageTimeline";
 import ToolUsageStatistics from "./ToolUsageStatistics";
 import { jsPDF } from "jspdf";
+import { useUpload } from "../contexts/UploadContext";
 
 // Optional default geolocation (configure via NEXT_PUBLIC_DEFAULT_LAT/LON)
 const DEFAULT_LAT = parseFloat(process.env.NEXT_PUBLIC_DEFAULT_LAT || "");
@@ -30,6 +31,9 @@ const DEFAULT_GEOLOCATION = HAS_DEFAULT_GEO
     : null;
 
 export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
+  // Get upload context to check if this video is currently being processed
+  const { detectionVideoId, isDetecting, startAnalysis, completeAnalysis } = useUpload();
+
   const [operatingNote, setOperatingNote] = useState(null);
   const [chapters, setChapters] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -84,7 +88,6 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
       // Skip if we already have detection data loaded or started
       if (detectionLoadedRef.current || detectionStartedRef.current) {
-        console.log('[Tool Detection] Already loaded or started, skipping');
         return;
       }
 
@@ -96,103 +99,52 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
       setToolDetectionProgress(0);
       setToolDetectionStage('initializing');
 
+      // Debug: log key state for this video
+      console.log(`[TD] videoId=${videoId}, isDetecting=${isDetecting}, detectionVideoId=${detectionVideoId}`);
+
       try {
         // 1. First, try to load from static files (pre-deployed detections)
-        console.log('[Tool Detection] Checking static file...');
         const staticResponse = await fetch(`/detections/${videoId}.json`);
 
         if (staticResponse.ok) {
-          console.log('[Tool Detection] Loaded from static file');
           const staticData = await staticResponse.json();
           detectionLoadedRef.current = true;
           setToolDetectionData(staticData);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');
           setIsLoadingToolDetection(false);
+          console.log(`[TD] ${videoId}: loaded from static`);
           return;
         }
 
         // 2. Static file not found, check API (Blob storage or processing)
-        console.log('[Tool Detection] Static file not found, checking API...');
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
+        console.log(`[TD] ${videoId}: API status=${data.status}`);
 
         if (data.status === "completed") {
-          console.log('[Tool Detection] Loaded from API/Blob');
           detectionLoadedRef.current = true;
           setToolDetectionData(data.data);
           setToolDetectionProgress(100);
           setToolDetectionStage('completed');
           setIsLoadingToolDetection(false);
         } else if (data.status === "not_found") {
-          console.log('[Tool Detection] No results found, checking if we can start processing...');
-          setIsLoadingToolDetection(true);
+          // Tool detection not found - check if this video is currently being uploaded/processed
+          const isCurrentlyProcessing = isDetecting && detectionVideoId === videoId;
+          console.log(`[TD] ${videoId}: not_found, isCurrentlyProcessing=${isCurrentlyProcessing}`);
 
-          // Try to get blob URL from mapping first (saved during upload)
-          let videoUrl = null;
-          try {
-            const mappingResponse = await fetch(`/api/video-urls/${videoId}`);
-            const mappingData = await mappingResponse.json();
-            if (mappingData.status === 'found' && mappingData.blobUrl) {
-              console.log('[Tool Detection] Found blob URL from mapping:', mappingData.blobUrl);
-              videoUrl = mappingData.blobUrl;
-            }
-          } catch (e) {
-            console.log('[Tool Detection] Could not fetch blob URL mapping:', e.message);
-          }
-
-          // No fallback to HLS URL - it doesn't work for tool detection
-          // Tool detection will be started by UploadVideo.js when indexing completes
-          if (!videoUrl) {
-            console.log('[Tool Detection] No blob URL mapping found - waiting for upload process to trigger detection');
-            // Start polling to check when detection becomes available
-            // (triggered by UploadVideo.js after indexing completes)
+          if (isCurrentlyProcessing) {
+            // This video is being processed right now, poll for results
             setIsLoadingToolDetection(true);
-            setToolDetectionStage('waiting for upload');
+            setToolDetectionStage('waiting for detection');
             startPolling(videoId);
-            return;
-          }
-
-          if (videoUrl) {
-            // Start processing in background with video URL
-            const startResponse = await fetch(`/api/detect-tools/${videoId}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ blobUrl: videoUrl }),
-            });
-            const startData = await startResponse.json();
-            console.log("[Tool Detection] Processing started:", startData);
-
-            // Handle different responses
-            if (startData.status === "started" || startData.status === "processing") {
-              // Processing started or already in progress - poll for results
-              startPolling(videoId);
-            } else if (startData.status === "completed") {
-              // Already completed - fetch the results
-              console.log("[Tool Detection] Already completed, fetching results...");
-              const resultsResponse = await fetch(`/api/detect-tools/${videoId}`);
-              const resultsData = await resultsResponse.json();
-              if (resultsData.status === "completed" && resultsData.data) {
-                detectionLoadedRef.current = true;
-                setToolDetectionData(resultsData.data);
-                setToolDetectionProgress(100);
-                setToolDetectionStage('completed');
-              }
-              setIsLoadingToolDetection(false);
-            } else {
-              console.log("[Tool Detection] Could not start processing:", startData.message);
-              setToolDetectionError(startData.message || "Could not start tool detection");
-              setIsLoadingToolDetection(false);
-              detectionStartedRef.current = false; // Allow retry on error
-            }
           } else {
-            console.log("[Tool Detection] No video URL available for processing");
-            setToolDetectionError("Video URL not available for tool detection");
+            // This is an older video without detection data
             setIsLoadingToolDetection(false);
-            detectionStartedRef.current = false; // Allow retry on error
+            setToolDetectionData(null);
           }
         } else if (data.status === "processing") {
-          console.log("[Tool Detection] Already processing, polling...");
+          console.log(`[TD] ${videoId}: processing`);
           setIsLoadingToolDetection(true);
 
           // Show initial progress based on elapsed time
@@ -219,7 +171,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           startPolling(videoId);
         }
       } catch (error) {
-        console.error("[Tool Detection] Error loading:", error);
+        console.error(`[TD] ${videoId}: error`, error.message);
         setToolDetectionError(error.message);
         setIsLoadingToolDetection(false);
         detectionStartedRef.current = false; // Allow retry on error
@@ -230,7 +182,6 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
     // Cleanup: stop polling when component unmounts or videoId changes
     return () => {
-      console.log('[Tool Detection] Cleaning up polling...');
       pollingRef.current.active = false;
       if (pollingRef.current.timeoutId) {
         clearTimeout(pollingRef.current.timeoutId);
@@ -246,12 +197,10 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
     // Mark polling as active
     pollingRef.current.active = true;
-    console.log(`[Tool Detection] Starting polling for ${videoId}`);
 
     const poll = async () => {
       // Check if polling was cancelled
       if (!pollingRef.current.active) {
-        console.log('[Tool Detection] Polling cancelled');
         return;
       }
 
@@ -259,17 +208,18 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
 
-        // Log full API response for debugging
-        console.log('[Tool Detection] API response:', data);
-
         // Check again after fetch (component might have unmounted)
         if (!pollingRef.current.active) {
-          console.log('[Tool Detection] Polling cancelled after fetch');
           return;
         }
 
+        // Only log on status change or every 6th attempt (30s)
+        if (attempts % 6 === 0) {
+          console.log(`[TD] ${videoId}: poll #${attempts}, status=${data.status}`);
+        }
+
         if (data.status === "completed") {
-          console.log("[Tool Detection] Processing complete!");
+          console.log(`[TD] ${videoId}: completed`);
           pollingRef.current.active = false;
           detectionLoadedRef.current = true;
           setToolDetectionData(data.data);
@@ -278,14 +228,13 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setIsLoadingToolDetection(false);
           return;
         } else if (data.status === "error") {
-          console.error("[Tool Detection] Processing error:", data.error);
+          console.log(`[TD] ${videoId}: error - ${data.error}`);
           pollingRef.current.active = false;
           setToolDetectionError(data.error);
           setIsLoadingToolDetection(false);
           return;
         } else if (data.status === "not_found") {
           // Not started yet - waiting for upload process to trigger detection
-          console.log(`[Tool Detection] Not found - waiting for upload to trigger detection`);
           setToolDetectionProgress(0);
           setToolDetectionStage('waiting for video upload to complete');
         } else if (data.status === "processing") {
@@ -307,7 +256,6 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
             stage = 'saving results';
           }
 
-          console.log(`[Tool Detection] Elapsed: ${elapsedSeconds}s, estimated progress: ${estimatedProgress}%`);
           setToolDetectionProgress(estimatedProgress);
           setToolDetectionStage(stage);
         }
@@ -321,7 +269,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           setIsLoadingToolDetection(false);
         }
       } catch (error) {
-        console.error("[Tool Detection] Poll error:", error);
+        console.log(`[TD] ${videoId}: poll error - ${error.message}`);
         pollingRef.current.active = false;
         setToolDetectionError(error.message);
         setIsLoadingToolDetection(false);
@@ -364,11 +312,11 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
       // If we have initialAnalysisData from parent component, use it first
       if (initialAnalysisData) {
-        console.log('[Surgical Analysis] Using initial data from parent component');
         setSurgicalAnalysisData(initialAnalysisData);
         setSurgicalAnalysisProgress(100);
         setSurgicalAnalysisStage('completed');
         setIsLoadingSurgicalAnalysis(false);
+        completeAnalysis(videoId);
         return;
       }
 
@@ -379,21 +327,19 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
       try {
         // 1. Try to load from static files first (pre-deployed analysis)
-        console.log('[Surgical Analysis] Checking static file...');
         const staticResponse = await fetch(`/analysis/${videoId}.json`);
 
         if (staticResponse.ok) {
-          console.log('[Surgical Analysis] Loaded from static file');
           const staticData = await staticResponse.json();
           setSurgicalAnalysisData(staticData);
           setSurgicalAnalysisProgress(100);
           setSurgicalAnalysisStage('completed');
           setIsLoadingSurgicalAnalysis(false);
+          completeAnalysis(videoId);
           return;
         }
 
         // 2. Static file not found, check API (Blob storage or processing)
-        console.log('[Surgical Analysis] Static file not found, checking API...');
         const response = await fetch(`/api/analysis/${videoId}?t=${Date.now()}`, {
           cache: 'no-store',
           headers: {
@@ -403,27 +349,49 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const data = await response.json();
 
         if (data.status === "completed") {
-          console.log('[Surgical Analysis] Loaded from API/Blob');
           setSurgicalAnalysisData(data.data);
           setSurgicalAnalysisProgress(100);
           setSurgicalAnalysisStage('completed');
           setIsLoadingSurgicalAnalysis(false);
+          completeAnalysis(videoId);
         } else if (data.status === "not_found") {
-          console.log('[Surgical Analysis] No results found, starting processing...');
+          // No existing analysis - generate timeline first, then SOAP (sequential to avoid race condition)
           setIsLoadingSurgicalAnalysis(true);
-          const startResponse = await fetch(`/api/analysis/${videoId}`, { method: "POST" });
-          const startData = await startResponse.json();
-          console.log('[Surgical Analysis] Processing started:', startData);
-          pollSurgicalAnalysis(videoId);
-        } else if (data.status === "processing") {
-          console.log('[Surgical Analysis] Already processing, polling...');
-          setIsLoadingSurgicalAnalysis(true);
-          setSurgicalAnalysisProgress(data.progress || 0);
-          setSurgicalAnalysisStage(data.stage || 'processing');
-          pollSurgicalAnalysis(videoId);
+          startAnalysis(videoId);
+
+          console.log('[Analysis] Starting initial generation (sequential: timeline → SOAP)');
+
+          // Step 1: Generate timeline first
+          setSurgicalAnalysisStage('generating timeline...');
+          setSurgicalAnalysisProgress(20);
+          const timelineResult = await fetch(`/api/analysis/${videoId}/timeline`, { method: "POST" }).then(r => r.json());
+          console.log('[Analysis] Timeline result:', timelineResult.status);
+
+          // Step 2: Generate SOAP (will merge with timeline data)
+          setSurgicalAnalysisStage('generating SOAP note...');
+          setSurgicalAnalysisProgress(60);
+          const soapResult = await fetch(`/api/analysis/${videoId}/soap`, { method: "POST" }).then(r => r.json());
+          console.log('[Analysis] SOAP result:', soapResult.status);
+
+          // SOAP result should have both timeline and SOAP data (merged)
+          if (soapResult.status === 'completed' && soapResult.data) {
+            setSurgicalAnalysisData(soapResult.data);
+            setSurgicalAnalysisProgress(100);
+            setSurgicalAnalysisStage('completed');
+            setIsLoadingSurgicalAnalysis(false);
+            completeAnalysis(videoId);
+          } else if (timelineResult.status === 'completed' && timelineResult.data) {
+            // Fallback to timeline data if SOAP failed
+            setSurgicalAnalysisData(timelineResult.data);
+            setSurgicalAnalysisProgress(100);
+            setSurgicalAnalysisStage('completed');
+            setIsLoadingSurgicalAnalysis(false);
+            completeAnalysis(videoId);
+          } else {
+            throw new Error('Failed to generate analysis');
+          }
         }
       } catch (error) {
-        console.error('[Surgical Analysis] Error loading:', error);
         setSurgicalAnalysisError(error.message);
         setIsLoadingSurgicalAnalysis(false);
       }
@@ -432,9 +400,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     loadSurgicalAnalysis();
   }, [videoId, initialAnalysisData]);
 
-  // Poll surgical analysis status
-  // refreshType: 'all', 'timeline', or 'soap'
-  const pollSurgicalAnalysis = async (videoId, refreshType = 'all') => {
+  // Poll surgical analysis status (for initial loading only)
+  const pollSurgicalAnalysis = async (videoId) => {
     const maxAttempts = 60; // 5 minutes (5s interval)
     let attempts = 0;
 
@@ -446,70 +413,39 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
         const data = await response.json();
 
         if (data.status === "completed") {
-          // For partial refresh, check if the specific field has data (not null)
-          // If null, the refresh is still in progress
-          if (refreshType === 'timeline') {
-            if (data.data?.chapters !== null && data.data?.chapters !== undefined) {
-              console.log(`[Surgical Analysis] timeline processing completed`);
-              setChapters(data.data.chapters);
-              setIsLoadingTimeline(false);
-            } else {
-              // chapters is null - still processing, continue polling
-              console.log(`[Surgical Analysis] timeline still processing (chapters is null)...`);
-              attempts++;
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 5000);
-              } else {
-                console.error('[Surgical Analysis] Timeline refresh timed out');
-                setIsLoadingTimeline(false);
-              }
-            }
-            return;
-          } else if (refreshType === 'soap') {
-            if (data.data?.operative_note !== null && data.data?.operative_note !== undefined) {
-              console.log(`[Surgical Analysis] soap processing completed`);
-              setOperatingNote(data.data.operative_note);
-              setIsLoadingSOAP(false);
-            } else {
-              // operative_note is null - still processing, continue polling
-              console.log(`[Surgical Analysis] soap still processing (operative_note is null)...`);
-              attempts++;
-              if (attempts < maxAttempts) {
-                setTimeout(poll, 5000);
-              } else {
-                console.error('[Surgical Analysis] SOAP refresh timed out');
-                setIsLoadingSOAP(false);
-              }
-            }
-            return;
-          } else {
-            // Full refresh
-            console.log(`[Surgical Analysis] full processing completed`);
+          // Verify that data actually contains results
+          if (data.data && (data.data.chapters || data.data.operative_note)) {
+            console.log(`[Poll] Completed with data, lastUpdated: ${data.data._lastUpdated}`);
             setSurgicalAnalysisData(data.data);
             setSurgicalAnalysisProgress(100);
             setSurgicalAnalysisStage('completed');
             setIsLoadingSurgicalAnalysis(false);
+            completeAnalysis(videoId);
+          } else {
+            // Status is completed but data is not ready yet, continue polling
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(poll, 5000);
+            } else {
+              throw new Error('Surgical analysis processing timeout - please try again later');
+            }
           }
         } else if (data.status === "processing" || data.status === "not_found") {
-          // Show estimated progress based on elapsed time
-          // TwelveLabs analysis typically takes 1-2 minutes
-          if (refreshType === 'all') {
-            const estimatedProgress = Math.min(90, Math.round((attempts / 20) * 90)); // ~100s to 90%
+          console.log(`[Poll] status=${data.status}, attempt=${attempts}`);
 
-            let stage;
-            if (attempts >= 20) {
-              // Taking longer than expected (> ~1.7 min)
-              stage = 'finalizing (taking longer than expected, please wait...)';
-            } else {
-              const stages = ['starting analysis', 'analyzing video content', 'generating timeline', 'creating SOAP note', 'finalizing'];
-              const stageIndex = Math.min(Math.floor(attempts / 4), stages.length - 1);
-              stage = stages[stageIndex];
-            }
+          const estimatedProgress = Math.min(90, Math.round((attempts / 20) * 90));
 
-            console.log(`[Surgical Analysis] Waiting... attempt ${attempts}, estimated progress: ${estimatedProgress}%`);
-            setSurgicalAnalysisProgress(estimatedProgress);
-            setSurgicalAnalysisStage(stage);
+          let stage;
+          if (attempts >= 20) {
+            stage = 'finalizing (taking longer than expected, please wait...)';
+          } else {
+            const stages = ['starting analysis', 'analyzing video content', 'generating timeline', 'creating SOAP note', 'finalizing'];
+            const stageIndex = Math.min(Math.floor(attempts / 4), stages.length - 1);
+            stage = stages[stageIndex];
           }
+
+          setSurgicalAnalysisProgress(estimatedProgress);
+          setSurgicalAnalysisStage(stage);
 
           attempts++;
           if (attempts < maxAttempts) {
@@ -521,15 +457,8 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           throw new Error(data.message || 'Analysis failed');
         }
       } catch (error) {
-        console.error('[Surgical Analysis] Polling error:', error);
-        if (refreshType === 'timeline') {
-          setIsLoadingTimeline(false);
-        } else if (refreshType === 'soap') {
-          setIsLoadingSOAP(false);
-        } else {
-          setSurgicalAnalysisError(error.message);
-          setIsLoadingSurgicalAnalysis(false);
-        }
+        setSurgicalAnalysisError(error.message);
+        setIsLoadingSurgicalAnalysis(false);
       }
     };
 
@@ -540,50 +469,56 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false);
   const [isLoadingSOAP, setIsLoadingSOAP] = useState(false);
 
-  // Refresh only Timeline/chapters - fetches from Twelve Labs API
+  // Refresh only Timeline/chapters - calls dedicated timeline endpoint
   const refreshTimeline = async () => {
     if (!videoId || isLoadingTimeline) return;
 
     setIsLoadingTimeline(true);
-    setChapters(null);
+    console.log(`[Refresh] Timeline refresh started`);
 
     try {
-      console.log('[Surgical Analysis] Refreshing Timeline only...');
-      const startResponse = await fetch(`/api/analysis/${videoId}?type=chapters`, { method: "POST" });
-      const startData = await startResponse.json();
-      console.log('[Surgical Analysis] Timeline refresh started:', startData);
+      // POST to dedicated timeline endpoint (waits for completion)
+      const response = await fetch(`/api/analysis/${videoId}/timeline`, { method: "POST" });
+      const result = await response.json();
+      console.log(`[Refresh] Timeline result:`, result.status);
 
-      // If already processing, just poll for results
-      if (startData.status === 'already_processing' || startResponse.status === 409) {
-        console.log('[Surgical Analysis] Timeline already processing, polling for results...');
+      if (result.status === 'completed' && result.data?.chapters) {
+        console.log(`[Refresh] Timeline: Setting ${result.data.chapters.length} chapters`);
+        setChapters(result.data.chapters);
+        setSurgicalAnalysisData(result.data);
+      } else if (result.status === 'error') {
+        console.error(`[Refresh] Timeline error:`, result.error);
       }
-      pollSurgicalAnalysis(videoId, 'timeline');
     } catch (error) {
-      console.error('[Surgical Analysis] Error refreshing timeline:', error);
+      console.error('[Refresh] Timeline refresh failed:', error);
+    } finally {
       setIsLoadingTimeline(false);
     }
   };
 
-  // Refresh only SOAP note - fetches from Twelve Labs API
+  // Refresh only SOAP note - calls dedicated soap endpoint
   const refreshSOAPNote = async () => {
     if (!videoId || isLoadingSOAP) return;
 
     setIsLoadingSOAP(true);
-    setOperatingNote(null);
+    console.log(`[Refresh] SOAP refresh started`);
 
     try {
-      console.log('[Surgical Analysis] Refreshing SOAP Note only...');
-      const startResponse = await fetch(`/api/analysis/${videoId}?type=soap`, { method: "POST" });
-      const startData = await startResponse.json();
-      console.log('[Surgical Analysis] SOAP Note refresh started:', startData);
+      // POST to dedicated soap endpoint (waits for completion)
+      const response = await fetch(`/api/analysis/${videoId}/soap`, { method: "POST" });
+      const result = await response.json();
+      console.log(`[Refresh] SOAP result:`, result.status);
 
-      // If already processing, just poll for results
-      if (startData.status === 'already_processing' || startResponse.status === 409) {
-        console.log('[Surgical Analysis] SOAP Note already processing, polling for results...');
+      if (result.status === 'completed' && result.data?.operative_note) {
+        console.log(`[Refresh] SOAP: Setting operative_note`);
+        setOperatingNote(result.data.operative_note);
+        setSurgicalAnalysisData(result.data);
+      } else if (result.status === 'error') {
+        console.error(`[Refresh] SOAP error:`, result.error);
       }
-      pollSurgicalAnalysis(videoId, 'soap');
     } catch (error) {
-      console.error('[Surgical Analysis] Error refreshing SOAP note:', error);
+      console.error('[Refresh] SOAP refresh failed:', error);
+    } finally {
       setIsLoadingSOAP(false);
     }
   };
@@ -601,14 +536,11 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
     setChapters(null);
 
     try {
-      console.log('[Surgical Analysis] Force refresh - fetching new data from Twelve Labs API...');
       // Use force=true parameter to bypass cache and fetch fresh data from Twelve Labs
       const startResponse = await fetch(`/api/analysis/${videoId}?force=true`, { method: "POST" });
-      const startData = await startResponse.json();
-      console.log('[Surgical Analysis] Force refresh started:', startData);
+      await startResponse.json();
       pollSurgicalAnalysis(videoId, 'all');
     } catch (error) {
-      console.error('[Surgical Analysis] Error refreshing:', error);
       setSurgicalAnalysisError(error.message);
       setIsLoadingSurgicalAnalysis(false);
     }
@@ -687,24 +619,18 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('[SOAP Note] Server error response:', errorData);
         throw new Error(errorData.error || errorData.details || `Server returned ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('[SOAP Note] Saved successfully:', data);
-      console.log('[SOAP Note] Server returned SOAP:', data.data?.operative_note?.SOAP);
 
       // Update surgical analysis data to keep it in sync
       if (data.data) {
         // Force update both states to ensure consistency
         setSurgicalAnalysisData(data.data);
         setOperatingNote(data.data.operative_note);
-        console.log('[SOAP Note] Updated states with server response');
-        console.log('[SOAP Note] New operatingNote.SOAP:', data.data.operative_note.SOAP);
       }
     } catch (error) {
-      console.error('[SOAP Note] Error saving:', error);
 
       // Try to get more detailed error message
       let errorMessage = 'Failed to save SOAP note. Please try again.';
@@ -826,56 +752,14 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
           {/* Tool Detection Status & Filter Panel */}
           <div className="mt-4">
             {isLoadingToolDetection ? (
-              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl shadow-lg border border-emerald-200 p-6">
-                <div className="flex items-start space-x-4">
-                  <div className="flex-shrink-0">
-                    <div className="relative">
-                      <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-200 border-t-emerald-600"></div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <WrenchScrewdriverIcon className="h-5 w-5 text-emerald-600" />
-                      </div>
-                    </div>
+              <div className="bg-white rounded-[20px] p-6 outline outline-1 outline-offset-[-1px] outline-gray-300">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Processing Tool Detection</h3>
+                    <p className="text-sm text-gray-600 mt-1">Analyzing video with YOLO model to identify surgical instruments...</p>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      Processing Tool Detection
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-1">
-                      Analyzing video with YOLO11m model to identify surgical
-                      instruments...
-                    </p>
-                    <p className="text-xs text-amber-600 font-medium mb-3">
-                      ⏱️ This typically takes 2-3 minutes for longer videos. Please wait.
-                    </p>
-                    <div className="bg-white/50 rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-700 font-medium">
-                          Progress
-                        </span>
-                        <span className="text-emerald-600 font-semibold">
-                          {toolDetectionProgress}% - {toolDetectionStage}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${toolDetectionProgress}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-gray-500 italic">
-                        ✨ This only happens once. Results will be cached for
-                        instant loading next time.
-                      </p>
-                    </div>
-                    <div className="mt-3 flex items-center space-x-2 text-xs text-gray-500">
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span>
-                          Detecting: Grasper, Clipper, Scissors, Hook,
-                          Irrigator, Bipolar, Specimen Bag
-                        </span>
-                      </div>
-                    </div>
+                  <div className="flex-shrink-0 ml-4">
+                    <div className="w-8 h-8 rounded-full border-2 border-solid border-gray-500 border-t-transparent animate-spin"></div>
                   </div>
                 </div>
               </div>
@@ -1009,7 +893,7 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                           <p className="text-blue-600">
                             {toolDetectionStage === 'waiting for upload'
                               ? 'Waiting for video upload to complete...'
-                              : `Processing tool detection... ${toolDetectionProgress}%`}
+                              : 'Processing tool detection...'}
                           </p>
                         </div>
                       </div>
@@ -1021,9 +905,16 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                 {activeTab === 'timeline' && (
                   <div className="bg-white rounded-[20px] p-6 outline outline-1 outline-offset-[-1px] outline-gray-300">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Surgical Phase Timeline
-          </h3>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Surgical Phase Timeline
+            </h3>
+            {surgicalAnalysisData?._lastUpdated && (
+              <p className="text-xs text-gray-400 mt-1">
+                Last updated: {new Date(surgicalAnalysisData._lastUpdated).toLocaleString()}
+              </p>
+            )}
+          </div>
           <div className="flex items-center space-x-2">
             {chapters && chapters.length > 0 && (
               <div className="flex items-center space-x-2 px-3 py-1 rounded-full outline outline-1 outline-offset-[-1px] outline-gray-300">
@@ -1122,6 +1013,11 @@ export default function ClipBento({ clipData, videoId, initialAnalysisData }) {
                   <p className="text-sm text-gray-600">
                     Subjective, Objective, Assessment & Plan
                   </p>
+                  {surgicalAnalysisData?._lastUpdated && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Last updated: {new Date(surgicalAnalysisData._lastUpdated).toLocaleString()}
+                    </p>
+                  )}
                             </div>
                             <div className="flex items-center space-x-2">
                               <button

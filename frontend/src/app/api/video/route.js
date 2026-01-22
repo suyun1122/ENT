@@ -77,7 +77,8 @@ export async function GET(request) {
         return new Response(JSON.stringify(videoList), {
             status: 200,
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store, max-age=0',
             }
         });
 

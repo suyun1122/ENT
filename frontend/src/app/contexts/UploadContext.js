@@ -9,9 +9,19 @@ export function UploadProvider({ children }) {
     isUploading: false,
     progress: 0,
     stage: '', // 'uploading', 'validating', 'pending', 'queued', 'indexing'
+    indexingStage: '', // Twelve Labs indexing status
     fileName: '',
     error: null,
     completedVideoId: null,
+    // Detection tracking
+    isDetecting: false,
+    detectionVideoId: null,
+    // Analysis tracking
+    isAnalyzing: false,
+    // Track completion of each step
+    indexingComplete: false,
+    detectionComplete: false,
+    analysisComplete: false,
   });
 
   // Callbacks for when upload completes
@@ -22,9 +32,16 @@ export function UploadProvider({ children }) {
       isUploading: true,
       progress: 0,
       stage: 'uploading',
+      indexingStage: '',
       fileName,
       error: null,
       completedVideoId: null,
+      isDetecting: false,
+      detectionVideoId: null,
+      isAnalyzing: false,
+      indexingComplete: false,
+      detectionComplete: false,
+      analysisComplete: false,
     });
   }, []);
 
@@ -33,17 +50,27 @@ export function UploadProvider({ children }) {
   }, []);
 
   const setStage = useCallback((stage) => {
-    setUploadState(prev => ({ ...prev, stage }));
+    setUploadState(prev => ({
+      ...prev,
+      stage,
+      indexingStage: stage, // Track indexing stage separately
+    }));
   }, []);
 
   const completeUpload = useCallback((videoId) => {
-    setUploadState(prev => ({
-      ...prev,
-      isUploading: false,
-      progress: 100,
-      stage: '',
-      completedVideoId: videoId,
-    }));
+    setUploadState(prev => {
+      const allComplete = prev.detectionComplete && prev.analysisComplete;
+      return {
+        ...prev,
+        indexingComplete: true,
+        indexingStage: 'ready',
+        // Only clear isUploading if all steps complete
+        isUploading: !allComplete,
+        progress: 100,
+        completedVideoId: videoId,
+        stage: allComplete ? '' : prev.stage,
+      };
+    });
 
     // Call all registered callbacks
     onCompleteCallbacksRef.current.forEach(callback => {
@@ -53,14 +80,97 @@ export function UploadProvider({ children }) {
         console.error('Upload complete callback error:', e);
       }
     });
+  }, []);
 
-    // Clear completed state after 5 seconds
-    setTimeout(() => {
-      setUploadState(prev => ({
+  // Start detection tracking (called when Railway upload starts)
+  const startDetection = useCallback((videoId) => {
+    setUploadState(prev => ({
+      ...prev,
+      isDetecting: true,
+      detectionVideoId: videoId,
+      detectionComplete: false,
+    }));
+  }, []);
+
+  // Complete detection tracking
+  const completeDetection = useCallback(() => {
+    setUploadState(prev => {
+      const allComplete = prev.indexingComplete && prev.analysisComplete;
+      return {
         ...prev,
-        completedVideoId: null,
-        fileName: '',
-      }));
+        isDetecting: false,
+        detectionVideoId: null,
+        detectionComplete: true,
+        isUploading: !allComplete,
+        stage: allComplete ? '' : prev.stage,
+      };
+    });
+
+    // Clear completed state after showing success (only if all complete)
+    setTimeout(() => {
+      setUploadState(prev => {
+        if (prev.indexingComplete && prev.detectionComplete && prev.analysisComplete) {
+          return {
+            ...prev,
+            completedVideoId: null,
+            fileName: '',
+            indexingComplete: false,
+            detectionComplete: false,
+            analysisComplete: false,
+          };
+        }
+        return prev;
+      });
+    }, 5000);
+  }, []);
+
+  // Start analysis tracking
+  const startAnalysis = useCallback((videoId) => {
+    setUploadState(prev => {
+      // Only track if this is the video being uploaded
+      if (prev.completedVideoId !== videoId && prev.detectionVideoId !== videoId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        isAnalyzing: true,
+        analysisComplete: false,
+      };
+    });
+  }, []);
+
+  // Complete analysis tracking
+  const completeAnalysis = useCallback((videoId) => {
+    setUploadState(prev => {
+      // Only track if this is the video being uploaded
+      if (prev.completedVideoId !== videoId && prev.detectionVideoId !== videoId) {
+        return prev;
+      }
+      const allComplete = prev.indexingComplete && prev.detectionComplete;
+      return {
+        ...prev,
+        isAnalyzing: false,
+        analysisComplete: true,
+        isUploading: !allComplete,
+        stage: allComplete ? '' : prev.stage,
+      };
+    });
+
+    // Clear completed state after showing success (only if all complete)
+    setTimeout(() => {
+      setUploadState(prev => {
+        if (prev.indexingComplete && prev.detectionComplete && prev.analysisComplete) {
+          return {
+            ...prev,
+            completedVideoId: null,
+            fileName: '',
+            indexingComplete: false,
+            detectionComplete: false,
+            analysisComplete: false,
+          };
+        }
+        return prev;
+      });
     }, 5000);
   }, []);
 
@@ -108,6 +218,10 @@ export function UploadProvider({ children }) {
       clearError,
       dismissComplete,
       onUploadComplete,
+      startDetection,
+      completeDetection,
+      startAnalysis,
+      completeAnalysis,
     }}>
       {children}
     </UploadContext.Provider>

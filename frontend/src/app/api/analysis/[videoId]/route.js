@@ -1,186 +1,85 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { TwelveLabs } from 'twelvelabs-js';
-import { put, head, del } from '@vercel/blob';
+import { put, del } from '@vercel/blob';
 
-// Lazy initialization to avoid build-time errors
-let twelvelabs_client = null;
-function getTwelveLabsClient() {
-    if (!twelvelabs_client) {
-        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
-    }
-    return twelvelabs_client;
+export const dynamic = 'force-dynamic';
+
+const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
+
+// Helper: get blob URL
+function getBlobUrl(videoId) {
+    if (!BLOB_STORE_BASE_URL) return null;
+    return `${BLOB_STORE_BASE_URL}/analysis/${videoId}.json`;
 }
-const processingStatus = new Map();
 
-// Surgical analysis prompts - separate prompts for chapters and SOAP note
-const chaptersOnlyPrompt = `You are analyzing a full-length surgical video.
+// Helper: fetch existing blob data
+async function fetchBlobData(videoId) {
+    const blobUrl = getBlobUrl(videoId);
+    if (!blobUrl) return null;
 
-This task is for EDUCATIONAL and DEMONSTRATION purposes only.
-
-Your task is to chapterize the surgery using the predefined surgical phases below.
-
-## OUTPUT FORMAT
-
-Return JSON only with no additional commentary:
-
-\`\`\`json
-{
-  "chapters": [
-    {
-      "chapter_number": 1,
-      "chapter_title": "Anesthesia & Positioning",
-      "start_time": 0,
-      "end_time": 120,
-      "chapter_summary": "Patient positioned in prone position with appropriate padding. General anesthesia administered."
+    try {
+        const response = await fetch(`${blobUrl}?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const lastUpdated = data._lastUpdated || 'unknown';
+            console.log(`[Analysis] Loaded from Blob (updated: ${lastUpdated})`);
+            return data;
+        }
+        return null;
+    } catch (error) {
+        console.log(`[Analysis] Blob fetch error: ${error.message}`);
+        return null;
     }
-  ]
 }
-\`\`\`
 
-## PREDEFINED SURGICAL PHASES (use as chapter titles)
+// Helper: delete blob
+async function deleteBlobIfExists(videoId) {
+    const blobUrl = getBlobUrl(videoId);
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobUrl || !token) return false;
 
-You MUST use one or more of the following standardized chapter titles:
-
-1. "Anesthesia & Positioning"
-2. "Surgical Approach & Incision"
-3. "Exposure & Dissection"
-4. "Main Procedure"
-5. "Hemostasis & Inspection"
-6. "Closure"
-7. "Postoperative Care Preparation"
-
-## CRITICAL RULES
-
-- NEVER invent or assume clinical information not visible in the video.
-- Use ONLY the predefined chapter titles listed above.
-- Chapters must be chronological and non-overlapping.`;
-
-const soapOnlyPrompt = `You are analyzing a full-length surgical video.
-
-This task is for EDUCATIONAL and DEMONSTRATION purposes only.
-The output is a video-derived operative summary and is NOT a substitute for a clinical operative report.
-
-Your task is to generate a SOAP-inspired operative note STRICTLY based on what is visible in the video.
-- CRITICAL: Write the operative note in FIRST-PERSON perspective
-- Use "I performed...", "I observed...", "I assessed...", "I identified..."
-- If certain details are not discernible, use phrases like "not fully visible" or "unable to confirm from video."
-
-EXAMPLE of first-person voice:
-✅ "I performed an incision at the level of T10-T11..."
-✅ "I identified a herniated disc and proceeded with a microdiscectomy..."
-❌ "The surgeon performed..." (INCORRECT — do NOT use third person)
-
-## OUTPUT FORMAT
-
-Return JSON only with no additional commentary:
-
-\`\`\`json
-{
-  "operative_note": {
-    "title": "Lumbar Microdiscectomy (Example)",
-    "SOAP": {
-      "Subjective": "I performed a lumbar microdiscectomy on a patient with symptomatic disc herniation.",
-      "Objective": "I identified [specific anatomical findings]. I observed [intraoperative findings].",
-      "Assessment": "I assessed the procedure as [outcome]. [Complications or concerns if visible].",
-      "Plan": "I closed the wound in layers. [Postoperative plan as indicated by procedure]."
+    try {
+        await del(blobUrl, { token });
+        return true;
+    } catch (error) {
+        return false;
     }
-  }
 }
-\`\`\`
 
-## CRITICAL RULES
+// Helper: save to blob
+async function saveToBlob(videoId, data) {
+    const blobPath = `analysis/${videoId}.json`;
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
 
-- NEVER invent or assume clinical information not visible in the video.
-- Write the entire operative note in FIRST-PERSON PAST TENSE.
-- If you cannot determine a detail, acknowledge it (e.g., "specifics not visible").
-- Focus on what is surgically relevant and observable.`;
-
-// Full surgical analysis prompt (both chapters and SOAP)
-const surgicalAnalysisPrompt = `You are analyzing a full-length surgical video.
-
-This task is for EDUCATIONAL and DEMONSTRATION purposes only.
-The output is a video-derived operative summary and is NOT a substitute for a clinical operative report.
-
-Your tasks:
-
-1. Chapterize the surgery using the predefined surgical phases below.
-2. Generate a SOAP-inspired operative note STRICTLY based on what is visible in the video.
-   - CRITICAL: Write the operative note in FIRST-PERSON perspective
-   - Use "I performed...", "I observed...", "I assessed...", "I identified..."
-   - If certain details are not discernible, use phrases like "not fully visible" or "unable to confirm from video."
-   - Include relevant timestamps using the format [HH:MM:SS] where appropriate
-
-EXAMPLE of first-person voice:
-✅ "I performed an incision at the level of T10-T11..."
-✅ "I identified a herniated disc and proceeded with a microdiscectomy..."
-❌ "The surgeon performed..." (INCORRECT — do NOT use third person)
-
-3. Return JSON only, with no additional commentary.
-
-## OUTPUT FORMAT
-
-\`\`\`json
-{
-  "chapters": [
-    {
-      "chapter_number": 1,
-      "chapter_title": "Anesthesia & Positioning",
-      "start_time": 0,
-      "end_time": 120,
-      "chapter_summary": "Patient positioned in prone position with appropriate padding. General anesthesia administered."
-    },
-    {
-      "chapter_number": 2,
-      "chapter_title": "Surgical Approach & Incision",
-      "start_time": 120,
-      "end_time": 350,
-      "chapter_summary": "Midline incision performed. Dissection through subcutaneous tissue and fascia."
+    if (!token) {
+        throw new Error('BLOB_READ_WRITE_TOKEN not configured');
     }
-  ],
-  "operative_note": {
-    "title": "Lumbar Microdiscectomy (Example)",
-    "SOAP": {
-      "Subjective": "I performed a lumbar microdiscectomy on a patient with symptomatic disc herniation. [Details as visible in video]",
-      "Objective": "I identified [specific anatomical findings]. I observed [intraoperative findings].",
-      "Assessment": "I assessed the procedure as [outcome]. [Complications or concerns if visible].",
-      "Plan": "I closed the wound in layers. [Postoperative plan as indicated by procedure]."
-    }
-  }
+
+    const dataWithTimestamp = {
+        ...data,
+        _lastUpdated: new Date().toISOString()
+    };
+
+    await deleteBlobIfExists(videoId);
+    await new Promise(r => setTimeout(r, 500));
+
+    const blob = await put(blobPath, JSON.stringify(dataWithTimestamp, null, 2), {
+        access: 'public',
+        contentType: 'application/json',
+        addRandomSuffix: false,
+        cacheControlMaxAge: 0,
+        token
+    });
+
+    console.log(`[Analysis] Saved to blob: ${blob.url}`);
+    return dataWithTimestamp;
 }
-\`\`\`
 
-## PREDEFINED SURGICAL PHASES (use as chapter titles)
-
-You MUST use one or more of the following standardized chapter titles.
-If a phase is not present in this video, skip it.
-
-1. "Anesthesia & Positioning"
-2. "Surgical Approach & Incision"
-3. "Exposure & Dissection"
-4. "Main Procedure"
-5. "Hemostasis & Inspection"
-6. "Closure"
-7. "Postoperative Care Preparation"
-
-## CRITICAL RULES
-
-- NEVER invent or assume clinical information not visible in the video.
-- Use ONLY the predefined chapter titles listed above.
-- Chapters must be chronological and non-overlapping.
-- Write the entire operative note in FIRST-PERSON PAST TENSE.
-- If you cannot determine a detail, acknowledge it (e.g., "specifics not visible").
-- Focus on what is surgically relevant and observable.
-
-## STYLE GUIDELINES
-
-- Use a neutral, professional surgical tone.
-- Write in the past tense.
-- Avoid timestamps in the operative note text.
-- Do NOT over-summarize or embellish.
-- Clarity and safety take precedence over completeness.`;
-
+// GET: Fetch existing analysis data
 export async function GET(request, { params }) {
     const { videoId } = await params;
 
@@ -188,69 +87,45 @@ export async function GET(request, { params }) {
         return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
 
-    console.log('[Surgical Analysis] GET request for video:', videoId);
+    console.log('[Analysis] GET request for video:', videoId);
 
-    // 1. Check Vercel Blob Storage first (if BLOB_READ_WRITE_TOKEN is set)
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-        try {
-            const blobInfo = await head(`analysis/${videoId}.json`);
-            if (blobInfo) {
-                console.log('[Surgical Analysis] Found in Vercel Blob');
-                // Add cache-busting and no-cache headers to ensure fresh data
-                const response = await fetch(blobInfo.url + `?t=${Date.now()}`, {
-                    cache: 'no-store',
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache'
-                    }
-                });
-                const analysisData = await response.text();
-                return NextResponse.json({
-                    status: 'completed',
-                    videoId,
-                    data: JSON.parse(analysisData)
-                });
-            }
-        } catch (error) {
-            console.warn(`[Surgical Analysis] Failed to fetch from Vercel Blob for ${videoId}:`, error.message);
-        }
-    }
-
-    // 2. Fallback to local filesystem (for development and pre-deployed videos)
-    const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-    if (fs.existsSync(analysisPath)) {
-        try {
-            console.log('[Surgical Analysis] Found in local filesystem');
-            const analysisData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-            return NextResponse.json({
-                status: 'completed',
-                videoId,
-                data: analysisData
-            });
-        } catch (error) {
-            console.error('[Surgical Analysis] Error reading local file:', error);
-        }
-    }
-
-    // 3. Check if processing is in progress
-    if (processingStatus.has(videoId)) {
-        const status = processingStatus.get(videoId);
-        console.log('[Surgical Analysis] Processing in progress:', status);
+    // 1. Try Vercel Blob Storage first
+    const blobData = await fetchBlobData(videoId);
+    if (blobData) {
         return NextResponse.json({
-            status: 'processing',
+            status: 'completed',
             videoId,
-            ...status
+            data: blobData
         });
     }
 
-    console.log('[Surgical Analysis] Not found');
+    // 2. Fallback to local filesystem (development only)
+    if (!BLOB_STORE_BASE_URL) {
+        const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+        if (fs.existsSync(analysisPath)) {
+            try {
+                console.log('[Analysis] Found in local filesystem (dev mode)');
+                const analysisData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+                return NextResponse.json({
+                    status: 'completed',
+                    videoId,
+                    data: analysisData
+                });
+            } catch (error) {
+                console.error('[Analysis] Error reading local file:', error);
+            }
+        }
+    }
+
+    console.log('[Analysis] Not found');
     return NextResponse.json({
         status: 'not_found',
         videoId,
-        message: 'Surgical analysis has not been run.'
+        message: 'Surgical analysis not found. Use /timeline and /soap endpoints to generate.'
     });
 }
 
+// PATCH: Update SOAP note (for editing)
 export async function PATCH(request, { params }) {
     const { videoId } = await params;
 
@@ -266,29 +141,16 @@ export async function PATCH(request, { params }) {
             return NextResponse.json({ error: 'SOAP data is required' }, { status: 400 });
         }
 
-        console.log('[Surgical Analysis] PATCH request - updating SOAP note for video:', videoId);
+        console.log('[Analysis] PATCH - updating SOAP note for video:', videoId);
 
-        // 1. Try to load existing data from Vercel Blob first
-        let existingData = null;
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                const blobInfo = await head(`analysis/${videoId}.json`);
-                if (blobInfo) {
-                    const response = await fetch(blobInfo.url);
-                    existingData = JSON.parse(await response.text());
-                    console.log('[Surgical Analysis] Loaded existing data from Blob');
-                }
-            } catch (error) {
-                console.warn('[Surgical Analysis] Failed to load from Blob:', error.message);
-            }
-        }
+        // Load existing data
+        let existingData = await fetchBlobData(videoId);
 
-        // 2. If not in Blob, try local filesystem
         if (!existingData) {
+            // Try local filesystem as fallback
             const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
             if (fs.existsSync(analysisPath)) {
                 existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-                console.log('[Surgical Analysis] Loaded existing data from filesystem');
             }
         }
 
@@ -298,402 +160,42 @@ export async function PATCH(request, { params }) {
             }, { status: 404 });
         }
 
-        // 3. Update SOAP note
+        // Update SOAP note
         const updatedData = {
             ...existingData,
             operative_note: {
                 ...existingData.operative_note,
                 SOAP: {
-                    ...existingData.operative_note.SOAP,
+                    ...existingData.operative_note?.SOAP,
                     ...SOAP
                 }
             }
         };
 
-        // 4. Save to Vercel Blob (primary storage for production)
+        // Save to blob
         if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                const blobPath = `analysis/${videoId}.json`;
-
-                // Delete existing blob first to avoid "blob already exists" error
-                try {
-                    await del(blobPath);
-                    console.log('[Surgical Analysis] Deleted existing blob before update');
-                    // Longer delay to ensure deletion is fully processed and CDN cache is cleared
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (delError) {
-                    console.log('[Surgical Analysis] No existing blob to delete or delete failed:', delError.message);
-                    // Still wait a bit in case of timing issues
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-
-                // Create new blob with updated data
-                const blob = await put(
-                    blobPath,
-                    JSON.stringify(updatedData, null, 2),
-                    {
-                        access: 'public',
-                        contentType: 'application/json',
-                        addRandomSuffix: false,
-                        cacheControlMaxAge: 0 // Disable CDN caching for frequently updated files
-                    }
-                );
-                console.log('[Surgical Analysis] Successfully saved to Vercel Blob:', blob.url);
-                console.log('[Surgical Analysis] Updated SOAP sections:', Object.keys(SOAP));
-            } catch (blobError) {
-                console.error('[Surgical Analysis] Failed to update Blob:', blobError);
-                throw new Error(`Failed to save to Blob Storage: ${blobError.message}`);
-            }
+            const savedData = await saveToBlob(videoId, updatedData);
+            return NextResponse.json({
+                status: 'success',
+                message: 'SOAP note updated successfully',
+                data: savedData
+            });
         } else {
-            // 5. Fallback to local filesystem (development only)
-            try {
-                const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-                const dir = path.dirname(localOutputPath);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true });
-                }
-                fs.writeFileSync(localOutputPath, JSON.stringify(updatedData, null, 2));
-                console.log('[Surgical Analysis] Updated local file (development mode)');
-            } catch (fsError) {
-                console.error('[Surgical Analysis] Failed to update local file:', fsError);
-                // In production (read-only filesystem), this is expected - don't throw error
-                if (process.env.VERCEL) {
-                    console.log('[Surgical Analysis] Skipping local file save in production (read-only filesystem)');
-                } else {
-                    throw fsError;
-                }
-            }
+            // Local filesystem fallback (development)
+            const localPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
+            fs.writeFileSync(localPath, JSON.stringify(updatedData, null, 2));
+            return NextResponse.json({
+                status: 'success',
+                message: 'SOAP note updated successfully',
+                data: updatedData
+            });
         }
 
-        return NextResponse.json({
-            status: 'success',
-            message: 'SOAP note updated successfully',
-            data: updatedData
-        });
-
     } catch (error) {
-        console.error('[Surgical Analysis] Error updating SOAP note:', error);
+        console.error('[Analysis] Error updating SOAP note:', error);
         return NextResponse.json({
             error: 'Failed to update SOAP note',
             details: error.message
         }, { status: 500 });
-    }
-}
-
-export async function POST(request, { params }) {
-    const { videoId } = await params;
-
-    if (!videoId) {
-        return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
-    }
-
-    // Check for parameters
-    const url = new URL(request.url);
-    const force = url.searchParams.get('force') === 'true';
-    const type = url.searchParams.get('type') || 'all'; // 'all', 'chapters', 'soap'
-
-    console.log('[Surgical Analysis] POST request for video:', videoId, 'force:', force, 'type:', type);
-
-    // Validate type parameter
-    if (!['all', 'chapters', 'soap'].includes(type)) {
-        return NextResponse.json({
-            error: 'Invalid type parameter. Must be "all", "chapters", or "soap".'
-        }, { status: 400 });
-    }
-
-    const processingKey = `${videoId}-${type}`;
-
-    // Check if already processing (unless force is true)
-    if (processingStatus.has(processingKey) && !force) {
-        const currentStatus = processingStatus.get(processingKey);
-        // Only block if actively processing (not completed or errored)
-        if (currentStatus.stage !== 'completed' && currentStatus.stage !== 'error') {
-            return NextResponse.json({
-                status: 'already_processing',
-                videoId,
-                message: 'Surgical analysis is already being processed.'
-            }, { status: 409 });
-        }
-        // If completed or errored, clear the status and allow new request
-        processingStatus.delete(processingKey);
-    }
-
-    // If force refresh AND type is 'all', delete existing cached files
-    if (force && type === 'all') {
-        console.log('[Surgical Analysis] Force refresh - deleting cached files');
-
-        // Delete from local filesystem
-        const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-        if (fs.existsSync(analysisPath)) {
-            fs.unlinkSync(analysisPath);
-            console.log('[Surgical Analysis] Deleted local file:', analysisPath);
-        }
-
-        // Delete from Vercel Blob Storage if available
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                await del(`analysis/${videoId}.json`);
-                console.log('[Surgical Analysis] Deleted from Vercel Blob Storage');
-            } catch (blobError) {
-                console.warn('[Surgical Analysis] Failed to delete from Vercel Blob (file may not exist):', blobError.message);
-            }
-        }
-
-        // Clear processing status if exists
-        if (processingStatus.has(processingKey)) {
-            processingStatus.delete(processingKey);
-        }
-    }
-
-    // For partial refresh (chapters or soap only), null out that specific part in cache
-    // This ensures polling will wait for new data instead of returning cached data
-    if (type !== 'all') {
-        console.log(`[Surgical Analysis] Partial refresh (${type}) - nullifying cached ${type} data`);
-
-        let existingData = null;
-
-        // Load existing data
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                const blobInfo = await head(`analysis/${videoId}.json`);
-                if (blobInfo) {
-                    const response = await fetch(blobInfo.url);
-                    existingData = JSON.parse(await response.text());
-                }
-            } catch (error) {
-                console.warn('[Surgical Analysis] No existing data in Blob');
-            }
-        }
-
-        if (!existingData) {
-            const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-            if (fs.existsSync(analysisPath)) {
-                existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-            }
-        }
-
-        if (existingData) {
-            // Null out the specific part being refreshed
-            if (type === 'chapters') {
-                existingData.chapters = null;
-            } else if (type === 'soap') {
-                existingData.operative_note = null;
-            }
-
-            // Save updated data with nullified field
-            if (process.env.BLOB_READ_WRITE_TOKEN) {
-                try {
-                    await del(`analysis/${videoId}.json`);
-                    await put(`analysis/${videoId}.json`, JSON.stringify(existingData, null, 2), {
-                        access: 'public',
-                        contentType: 'application/json',
-                        addRandomSuffix: false
-                    });
-                    console.log(`[Surgical Analysis] Nullified ${type} in Blob cache`);
-                } catch (blobError) {
-                    console.error('[Surgical Analysis] Failed to update Blob:', blobError);
-                }
-            }
-
-            // Also update local file if exists
-            try {
-                const localPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-                if (fs.existsSync(localPath)) {
-                    fs.writeFileSync(localPath, JSON.stringify(existingData, null, 2));
-                    console.log(`[Surgical Analysis] Nullified ${type} in local cache`);
-                }
-            } catch (fsError) {
-                // Ignore - may fail in production
-            }
-        }
-    }
-
-    // Start processing
-    processingStatus.set(processingKey, { progress: 0, stage: 'initializing' });
-
-    // Process asynchronously
-    processSurgicalAnalysis(videoId, type).catch(error => {
-        console.error('[Surgical Analysis] Processing error:', error);
-        processingStatus.delete(processingKey);
-    });
-
-    const typeMessages = {
-        'all': 'Full surgical analysis',
-        'chapters': 'Timeline/chapters analysis',
-        'soap': 'SOAP note analysis'
-    };
-
-    return NextResponse.json({
-        status: 'started',
-        videoId,
-        type,
-        message: `${typeMessages[type]} ${force ? 'force refresh ' : ''}started.`
-    });
-}
-
-async function processSurgicalAnalysis(videoId, type = 'all') {
-    const processingKey = `${videoId}-${type}`;
-
-    try {
-        console.log(`[Surgical Analysis] ========================================`);
-        console.log(`[Surgical Analysis] Starting ${type} analysis for video ${videoId}`);
-        console.log(`[Surgical Analysis] Timestamp: ${new Date().toISOString()}`);
-
-        processingStatus.set(processingKey, { progress: 10, stage: 'calling_twelvelabs_api' });
-
-        // Select the appropriate prompt based on type
-        let prompt;
-        switch (type) {
-            case 'chapters':
-                prompt = chaptersOnlyPrompt;
-                break;
-            case 'soap':
-                prompt = soapOnlyPrompt;
-                break;
-            default:
-                prompt = surgicalAnalysisPrompt;
-        }
-
-        // Call TwelveLabs API
-        console.log(`[Surgical Analysis] Calling TwelveLabs API... (this typically takes 30s-2min)`);
-        const startTime = Date.now();
-        const response = await getTwelveLabsClient().analyze({
-            videoId: videoId,
-            prompt: prompt,
-            temperature: 0.2
-        });
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[Surgical Analysis] TwelveLabs API responded in ${elapsed}s`);
-
-        processingStatus.set(processingKey, { progress: 60, stage: 'parsing_response' });
-
-        // Parse the response
-        let jsonString = response.data || response.response || "{}";
-
-        // Remove markdown code fences if present
-        jsonString = jsonString
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
-
-        const parsedData = JSON.parse(jsonString);
-
-        processingStatus.set(processingKey, { progress: 80, stage: 'saving_results' });
-
-        // For partial updates (chapters or soap), we need to merge with existing data
-        let finalData = parsedData;
-
-        if (type !== 'all') {
-            // Load existing data first
-            let existingData = null;
-
-            if (process.env.BLOB_READ_WRITE_TOKEN) {
-                try {
-                    const blobInfo = await head(`analysis/${videoId}.json`);
-                    if (blobInfo) {
-                        const existingResponse = await fetch(blobInfo.url);
-                        existingData = JSON.parse(await existingResponse.text());
-                        console.log(`[Surgical Analysis] Loaded existing data from Blob for merging`);
-                    }
-                } catch (error) {
-                    console.warn(`[Surgical Analysis] No existing data in Blob`);
-                }
-            }
-
-            if (!existingData) {
-                const analysisPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-                if (fs.existsSync(analysisPath)) {
-                    existingData = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
-                    console.log(`[Surgical Analysis] Loaded existing data from filesystem for merging`);
-                }
-            }
-
-            if (existingData) {
-                // Merge: update only the part that was regenerated
-                if (type === 'chapters') {
-                    finalData = {
-                        ...existingData,
-                        chapters: parsedData.chapters
-                    };
-                } else if (type === 'soap') {
-                    finalData = {
-                        ...existingData,
-                        operative_note: parsedData.operative_note
-                    };
-                }
-            } else {
-                // No existing data - for partial types, we might need to initialize missing parts
-                if (type === 'chapters') {
-                    finalData = {
-                        chapters: parsedData.chapters,
-                        operative_note: null
-                    };
-                } else if (type === 'soap') {
-                    finalData = {
-                        chapters: null,
-                        operative_note: parsedData.operative_note
-                    };
-                }
-            }
-        }
-
-        // Save to Vercel Blob FIRST (works in production)
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            try {
-                // Delete existing blob first to avoid conflicts
-                try {
-                    await del(`analysis/${videoId}.json`);
-                } catch (delError) {
-                    // Ignore - file may not exist
-                }
-
-                const blob = await put(`analysis/${videoId}.json`, JSON.stringify(finalData, null, 2), {
-                    access: 'public',
-                    contentType: 'application/json',
-                    addRandomSuffix: false
-                });
-                console.log(`[Surgical Analysis] Uploaded to Vercel Blob: ${blob.url}`);
-            } catch (blobError) {
-                console.error(`[Surgical Analysis] Failed to upload to Vercel Blob:`, blobError);
-            }
-        }
-
-        // Also save to local filesystem (for development, may fail in production - that's ok)
-        try {
-            const localOutputPath = path.join(process.cwd(), 'public', 'analysis', `${videoId}.json`);
-            const dir = path.dirname(localOutputPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(localOutputPath, JSON.stringify(finalData, null, 2));
-            console.log(`[Surgical Analysis] Saved to local file: ${localOutputPath}`);
-        } catch (fsError) {
-            // Expected to fail on Vercel (read-only filesystem) - that's OK, we have Blob
-            console.log(`[Surgical Analysis] Local file save skipped (read-only filesystem)`);
-        }
-
-        processingStatus.set(processingKey, { progress: 100, stage: 'completed' });
-        console.log(`[Surgical Analysis] ${type} processing completed for video ${videoId}`);
-
-        // Clean up status after a delay
-        setTimeout(() => {
-            processingStatus.delete(processingKey);
-        }, 60000); // 1 minute
-
-    } catch (error) {
-        console.error(`[Surgical Analysis] Error processing video ${videoId}:`, error);
-        processingStatus.set(processingKey, {
-            progress: 0,
-            stage: 'error',
-            error: error.message
-        });
-
-        // Clean up error status after a delay
-        setTimeout(() => {
-            processingStatus.delete(processingKey);
-        }, 60000);
-
-        throw error;
     }
 }

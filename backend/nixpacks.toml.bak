@@ -1,6 +1,13 @@
 [phases.setup]
 nixPkgs = ["python3", "gcc", "libGL", "glib", "xorg.libxcb", "xorg.libX11"]
-aptPkgs = ["libgl1", "libglib2.0-0", "libxcb1", "libx11-6"]
+aptPkgs = ["libgl1", "libglib2.0-0", "libxcb1", "libx11-6", "libxau6", "libxdmcp6", "libxcb-xinerama0", "libxcb-icccm4", "libxcb-image0", "libxcb-keysyms1", "libxcb-randr0", "libxcb-render-util0", "libxcb-shape0", "libxcb-shm0", "libxcb-util1", "libxext6", "libxrender1"]
+
+[phases.build]
+cmds = [
+    "echo '/usr/lib/x86_64-linux-gnu' | sudo tee /etc/ld.so.conf.d/opencv.conf",
+    "sudo ldconfig",
+    "chmod +x start.sh"
+]
 
 [phases.install]
 cmds = [
@@ -13,4 +20,4 @@ cmds = [
 ]
 
 [start]
-cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+cmd = "./start.sh"

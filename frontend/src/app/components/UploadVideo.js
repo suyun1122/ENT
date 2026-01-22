@@ -18,10 +18,12 @@ export default function UploadVideo() {
     completeUpload,
     failUpload,
     clearError,
+    startDetection,
+    completeDetection,
   } = useUpload();
 
-  // Poll for tool detection completion, then cleanup blob
-  const waitForDetectionAndCleanup = async (videoId, blobUrl, taskId) => {
+  // Poll for tool detection completion (no blob cleanup needed anymore)
+  const waitForDetectionCompletion = async (videoId) => {
     const POLL_INTERVAL = 10000;
     const MAX_POLLS = 60;
     let pollCount = 0;
@@ -29,12 +31,12 @@ export default function UploadVideo() {
     const checkDetection = async () => {
       try {
         pollCount++;
-        console.log(`[Detection Cleanup] Checking detection status ${pollCount}/${MAX_POLLS}...`);
+        console.log(`[Detection] Checking status ${pollCount}/${MAX_POLLS}...`);
 
         const response = await fetch(`/api/detect-tools/${videoId}`);
         const data = await response.json();
 
-        console.log(`[Detection Cleanup] Status: ${data.status}`);
+        console.log(`[Detection] Status: ${data.status}`);
 
         if (data.status === 'completed') {
           const hasValidData = data.data &&
@@ -43,55 +45,29 @@ export default function UploadVideo() {
              Object.keys(data.data.classes || {}).length > 0);
 
           if (!hasValidData) {
-            console.warn('[Detection Cleanup] Detection completed but data is empty, continuing to poll...');
+            console.warn('[Detection] Detection completed but data is empty, continuing to poll...');
             if (pollCount < MAX_POLLS) {
               setTimeout(checkDetection, POLL_INTERVAL);
               return;
             }
           }
 
-          console.log('[Detection Cleanup] Detection complete with valid data, cleaning up blob...');
-
-          try {
-            await fetch(`/api/upload/status/${taskId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blobUrl }),
-            });
-            console.log('[Detection Cleanup] Blob cleanup complete');
-          } catch (cleanupError) {
-            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
-          }
+          console.log('[Detection] Detection complete with valid data!');
+          completeDetection(); // Update indicator to show complete
           return;
         } else if (data.status === 'error' || pollCount >= MAX_POLLS) {
-          console.log('[Detection Cleanup] Detection failed or timeout, cleaning up blob anyway...');
-          try {
-            await fetch(`/api/upload/status/${taskId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blobUrl }),
-            });
-          } catch (cleanupError) {
-            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
-          }
+          console.log('[Detection] Detection failed or timeout');
+          completeDetection(); // Clear detecting state even on error
           return;
         } else {
           setTimeout(checkDetection, POLL_INTERVAL);
         }
       } catch (error) {
-        console.error('[Detection Cleanup] Poll error:', error);
-        if (pollCount >= MAX_POLLS) {
-          try {
-            await fetch(`/api/upload/status/${taskId}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blobUrl }),
-            });
-          } catch (cleanupError) {
-            console.warn('[Detection Cleanup] Blob cleanup failed:', cleanupError);
-          }
-        } else {
+        console.error('[Detection] Poll error:', error);
+        if (pollCount < MAX_POLLS) {
           setTimeout(checkDetection, POLL_INTERVAL);
+        } else {
+          completeDetection(); // Clear on max polls reached
         }
       }
     };
@@ -99,11 +75,40 @@ export default function UploadVideo() {
     checkDetection();
   };
 
+  // Upload video to Railway for tool detection via API proxy (avoids CORS)
+  const uploadToRailwayForDetection = async (videoId, blobUrl) => {
+    try {
+      console.log(`[Railway Upload] Starting detection with blob URL for ${videoId}...`);
+
+      // Use POST to start detection with blob URL
+      const response = await fetch(`/api/detect-tools/${videoId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blobUrl }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('[Railway Upload] Detection started:', result);
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.warn('[Railway Upload] Detection failed:', response.status, errorText);
+        return false;
+      }
+    } catch (error) {
+      console.warn('[Railway Upload] Detection error:', error);
+      return false;
+    }
+  };
+
   // Poll for indexing status
+  // Tool detection starts after we get videoId and blob URL
   const pollIndexingStatus = async (taskId, blobUrl) => {
     const POLL_INTERVAL = 5000;
     const MAX_POLLS = 120;
     let pollCount = 0;
+    let railwayUploadStarted = false;
 
     return new Promise((resolve, reject) => {
       const checkStatus = async () => {
@@ -111,8 +116,7 @@ export default function UploadVideo() {
           pollCount++;
           console.log(`[Indexing Status] Polling ${pollCount}/${MAX_POLLS}...`);
 
-          const encodedBlobUrl = encodeURIComponent(blobUrl);
-          const response = await fetch(`/api/upload/status/${taskId}?blobUrl=${encodedBlobUrl}`);
+          const response = await fetch(`/api/upload/status/${taskId}`);
           const data = await response.json();
 
           console.log(`[Indexing Status] Status: ${data.status}, videoId: ${data.videoId || 'pending'}`);
@@ -121,35 +125,34 @@ export default function UploadVideo() {
             setStage(data.status);
           }
 
-          if (data.status === 'ready') {
-            console.log('[Indexing Status] Video ready! Tool detection triggered:', data.toolDetectionTriggered);
+          // Start Railway detection as soon as we have videoId (don't wait for indexing to complete)
+          if (data.videoId && blobUrl && !railwayUploadStarted) {
+            railwayUploadStarted = true;
+            console.log('[Indexing Status] Got videoId, starting tool detection in parallel. videoId:', data.videoId);
 
-            try {
-              await fetch(`/api/video-urls/${data.videoId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ blobUrl }),
+            // Start detection tracking immediately
+            console.log('[Indexing Status] Calling startDetection...');
+            startDetection(data.videoId);
+
+            // Start tool detection in background using blob URL (don't await)
+            uploadToRailwayForDetection(data.videoId, blobUrl)
+              .then(success => {
+                if (success) {
+                  console.log('[Indexing Status] Tool detection started!');
+                  waitForDetectionCompletion(data.videoId);
+                } else {
+                  console.warn('[Indexing Status] Tool detection failed to start');
+                  completeDetection(); // Clear detection state on failure
+                }
+              })
+              .catch(err => {
+                console.warn('[Indexing Status] Tool detection error:', err);
+                completeDetection(); // Clear detection state on error
               });
-              console.log('[Indexing Status] Blob URL mapping saved for', data.videoId);
-            } catch (mappingError) {
-              console.warn('[Indexing Status] Failed to save blob URL mapping:', mappingError);
-            }
+          }
 
-            if (data.toolDetectionTriggered) {
-              console.log('[Indexing Status] Starting background detection monitoring...');
-              waitForDetectionAndCleanup(data.videoId, blobUrl, taskId);
-            } else {
-              try {
-                await fetch(`/api/upload/status/${taskId}`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ blobUrl }),
-                });
-              } catch (cleanupError) {
-                console.warn('[Indexing Status] Blob cleanup failed:', cleanupError);
-              }
-            }
-
+          if (data.status === 'ready') {
+            console.log('[Indexing Status] Video ready!');
             resolve(data.videoId);
           } else if (data.status === 'failed') {
             reject(new Error('Video indexing failed'));
@@ -173,50 +176,56 @@ export default function UploadVideo() {
   };
 
   const uploadVideo = async (file) => {
-    console.log("Starting video upload via Vercel Blob...");
+    console.log("Starting video upload flow...");
     startUpload(file.name);
 
     try {
-      console.log("[Blob Upload] Step 1: Uploading to Vercel Blob...");
+      // Step 1: Upload to Vercel Blob using client-side upload (bypasses 4.5MB API limit)
+      console.log("[Upload] Step 1: Uploading to Vercel Blob (client-side)...");
+      setStage('uploading');
 
-      const blob = await upload(file.name, file, {
+      const blob = await upload(`videos/${Date.now()}-${file.name}`, file, {
         access: 'public',
-        handleUploadUrl: '/api/upload/blob-token',
-        onUploadProgress: (progress) => {
-          const percent = Math.round((progress.loaded / progress.total) * 100);
+        handleUploadUrl: '/api/upload/token',
+        onUploadProgress: (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
           updateProgress(percent);
-          console.log(`[Blob Upload] Progress: ${percent}%`);
+          console.log(`[Upload] Blob upload progress: ${percent}%`);
         },
       });
 
-      console.log("[Blob Upload] Uploaded to Blob:", blob.url);
+      console.log("[Upload] Blob upload complete:", blob.url);
+      updateProgress(100);
 
-      setStage('indexing');
-      console.log("[Blob Upload] Step 2: Starting TwelveLabs indexing...");
+      // Step 2: Send blob URL to server for TwelveLabs indexing
+      console.log("[Upload] Step 2: Starting TwelveLabs indexing...");
+      setStage('validating');
 
-      const indexResponse = await fetch("/api/upload/from-blob", {
+      const uploadResponse = await fetch("/api/upload/direct", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           blobUrl: blob.url,
           filename: file.name,
         }),
       });
 
-      if (!indexResponse.ok) {
-        const errorData = await indexResponse.json();
-        throw new Error(errorData.error || "Failed to start indexing");
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error || "Failed to start video indexing");
       }
 
-      const indexData = await indexResponse.json();
-      console.log("[Blob Upload] Indexing started, taskId:", indexData.taskId);
+      const uploadData = await uploadResponse.json();
+      console.log("[Upload] Indexing started, taskId:", uploadData.taskId);
 
-      console.log("[Blob Upload] Step 3: Polling for indexing completion...");
-      const videoId = await pollIndexingStatus(indexData.taskId, blob.url);
-      console.log("[Blob Upload] Video indexed successfully, videoId:", videoId);
+      // Step 3: Poll for indexing completion
+      setStage('indexing');
+      console.log("[Upload] Step 3: Polling for indexing completion...");
 
+      const videoId = await pollIndexingStatus(uploadData.taskId, blob.url);
+      console.log("[Upload] Video indexed successfully, videoId:", videoId);
+
+      console.log("[Upload] Calling completeUpload...");
       completeUpload(videoId);
 
       return {
@@ -363,7 +372,7 @@ export default function UploadVideo() {
 
               {/* Processing Note */}
               <p className="text-[10px] font-['Milling'] text-center px-4" style={{ color: 'var(--zinc-500)' }}>
-                *Processing takes ~3-4 min (indexing, tool detection, analysis)
+                *Processing takes ~2-3 min (indexing, tool detection, analysis)
               </p>
             </>
           )}
