@@ -402,6 +402,16 @@ export default function ClipChat({ videoId }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Recording indicator */}
+          {isRecording && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-full">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+              <span className="text-xs font-medium text-red-600">Listening...</span>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -410,9 +420,9 @@ export default function ClipChat({ videoId }) {
                 else startRecording();
               }
             }}
-            className={`p-2 rounded-full transition-colors ${
+            className={`cursor-pointer relative p-2 rounded-full transition-colors ${
               isRecording
-                ? "bg-[#1D1C1B] text-white"
+                ? "bg-red-500 text-white animate-pulse"
                 : "bg-white text-gray-700 outline outline-1 outline-offset-[-1px] outline-gray-300 hover:bg-gray-50"
             }`}
             title={
@@ -423,17 +433,17 @@ export default function ClipChat({ videoId }) {
                 : "Voice not available"
             }
           >
+            {isRecording && (
+              <span className="absolute inset-0 rounded-full animate-ping bg-red-400 opacity-30"></span>
+            )}
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
+              className="h-5 w-5 relative"
+              viewBox="0 0 24 24"
               fill="currentColor"
             >
-              <path
-                fillRule="evenodd"
-                d="M10 2a2 2 0 00-2 2v6a2 2 0 104 0V4a2 2 0 00-2-2zM5 8a5 5 0 0010 0h-1a4 4 0 11-8 0H5z"
-                clipRule="evenodd"
-              />
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
             </svg>
           </button>
 
