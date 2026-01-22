@@ -2,6 +2,8 @@
 
 AI-powered surgical tool detection and analysis platform using YOLO computer vision and TwelveLabs video intelligence.
 
+**Live Demo**: [https://surgical-tool-detection-dun.vercel.app](https://surgical-tool-detection-dun.vercel.app)
+
 ## Overview
 
 This application automatically detects and tracks surgical instruments in laparoscopic surgery videos. It combines real-time YOLO-based object detection with TwelveLabs' video understanding capabilities to provide comprehensive surgical video analysis.
