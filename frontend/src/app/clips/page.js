@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import ClipSort from '../components/ClipSort';
 import UploadVideo from '../components/UploadVideo';
 import ClipCard from '../components/ClipCard';
+import SearchResultModal from '../components/SearchResultModal';
 import { useUpload } from '../contexts/UploadContext';
 
 export default function Clips() {
@@ -13,6 +14,23 @@ export default function Clips() {
   const [filteredClipData, setFilteredClipData] = useState([]);
   const [isSearchActive, setIsSearchActive] = useState(false);
   const { onUploadComplete } = useUpload();
+
+  // Modal state for search results
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedClipIndex, setSelectedClipIndex] = useState(0);
+
+  // Handle opening modal for search result
+  const handleSearchResultClick = (clipIndex) => {
+    setSelectedClipIndex(clipIndex);
+    setIsModalOpen(true);
+  };
+
+  // Handle modal navigation
+  const handleModalNavigate = (newIndex) => {
+    if (newIndex >= 0 && newIndex < filteredClipData.length) {
+      setSelectedClipIndex(newIndex);
+    }
+  };
 
   // Memoize loadClipData to avoid dependency issues
   const loadClipData = useCallback(async () => {
@@ -161,12 +179,23 @@ export default function Clips() {
                 clipEnd={clip.clipEnd}
                 isClip={clip.isClip}
                 isSearchResult={isSearchActive}
+                onSearchResultClick={() => handleSearchResultClick(index)}
               />
             ))}
 
           </div>
         </div>
       </div>
+
+      {/* Search Result Modal */}
+      <SearchResultModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        clip={filteredClipData[selectedClipIndex]}
+        allClips={filteredClipData}
+        currentIndex={selectedClipIndex}
+        onNavigate={handleModalNavigate}
+      />
     </div>
   );
 }
