@@ -1,0 +1,31 @@
+# Ignore everything except backend files
+*
+
+# Include only what's needed for backend
+!requirements.txt
+!main.py
+!best.pt
+!*.py
+
+# Explicitly exclude large directories (in case of context issues)
+__pycache__
+*.pyc
+*.pyo
+.env*
+.git
+.gitignore
+venv/
+.venv/
+
+# Exclude other project directories
+../cv_model/
+../frontend/
+../rtsp-stream-worker/
+../assets/
+../design-benchmark/
+
+# Exclude model training files
+*.pt
+!best.pt
+runs/
+temp/
