@@ -1,39 +1,132 @@
-## NVIDIA GTC 2025 — TwelveLabs × NVIDIA VSS: Real‑Time Manufacturing Compliance
+# Surgical Tool Detection
 
+AI-powered surgical tool detection and analysis platform using YOLO computer vision and TwelveLabs video intelligence.
 
+## Overview
 
-### Live Video Demo
-[![Live Video Demo](https://img.youtube.com/vi/opYVHSc77ZQ/maxresdefault.jpg)](https://www.youtube.com/watch?v=opYHSc77ZQ&feature=youtu.be)
+This application automatically detects and tracks surgical instruments in laparoscopic surgery videos. It combines real-time YOLO-based object detection with TwelveLabs' video understanding capabilities to provide comprehensive surgical video analysis.
 
-### Architecture
-![System Architecture](assets/architecture.png)
+### Key Features
 
-### Lucidchart
-- Interactive architecture diagram: [Lucidchart](https://lucid.app/lucidchart/6b6215f6-b49d-4ca5-92a4-e677dba3eb12/edit?invitationId=inv_b73efd38-0dde-43ef-8477-e1ae471f0aa1)
+- **Automatic Tool Detection**: YOLO-based detection of 7 surgical instruments (Bipolar, Clipper, Grasper, Hook, Irrigator, Scissors, Specimen Bag)
+- **Tool Usage Timeline**: Visual timeline showing when each tool appears in the video
+- **Usage Statistics**: Aggregated statistics on tool usage frequency and duration
+- **Video Search**: Natural language search across indexed surgical videos via TwelveLabs
+- **Clip Generation**: Create and export video clips of specific tool usage segments
 
-### Overview
-This project is a close‑to‑real‑time manufacturing compliance automation system that integrates TwelveLabs video intelligence with NVIDIA Video Search and Summarization (VSS). It continuously ingests live or archived video, runs computer‑vision PPE compliance checks, chunks processed video to NVIDIA VSS for indexing, and powers a frontend for search, analysis, and reporting.
+### Detected Surgical Tools
 
-Key features:
-- Actionable video analytics with TwelveLabs and NVIDIA VSS
-- Agent chatbot for video Q&A and insights
-- Instant compliance report creator (per shift/factory)
-- Live stream simulation via RTSP worker with HLS playback
-- Video chaptering, event timeline, and clip generation
+| Tool | Color |
+|------|-------|
+| Bipolar | Red |
+| Clipper | Cyan |
+| Grasper | Yellow |
+| Hook | Green |
+| Irrigator | Blue |
+| Scissors | Purple |
+| Specimen Bag | Pink |
 
-### Repository Structure
-- `frontend/`: Next.js app for search, analytics, and reporting UI
-- `rtsp-stream-worker/`: FastAPI + MediaMTX worker for RTSP/HLS, chunking, and uploads to NVIDIA VSS
-- `cv_model/`: PPE detection training scripts and training results
-- `assets/`: Images and diagrams (e.g., `architecture.png`)
+## Tech Stack
 
-### Related NVIDIA VSS Blueprint
-- Forked baseline and concepts are informed by NVIDIA's blueprint: [NVIDIA VSS Repo (fork)](https://github.com/james-le-twelve-labs/nvidia-vss)
+### Frontend
+- **Framework**: Next.js 15 with Turbopack
+- **UI**: React 19, Tailwind CSS 4
+- **Video**: HLS.js for video playback
+- **API**: TwelveLabs JS SDK for video intelligence
+- **Storage**: Vercel Blob, AWS S3
 
-### Getting Started (High‑Level)
-1) See `frontend/README.md` to configure environment variables and run the UI.
-2) See `rtsp-stream-worker/README.md` to run the worker (Docker) and enable live streams and processing.
-3) See `cv_model/README.md` for background on PPE model training and results.
+### Backend
+- **Framework**: FastAPI (Python)
+- **ML Model**: YOLO (Ultralytics) for object detection
+- **Video Processing**: OpenCV
+- **Deployment**: Docker, Railway
 
-### Notes on Credentials
-Environment variables are required for AWS, TwelveLabs, and NVIDIA VSS endpoints. Place them in the respective `.env` files as described in sub‑module READMEs. Treat any shared keys as development‑only and rotate for production.
+## Repository Structure
+
+```
+├── frontend/          # Next.js web application
+│   ├── src/app/
+│   │   ├── components/   # React components (Timeline, Statistics, etc.)
+│   │   ├── api/          # API routes
+│   │   └── clips/        # Clip management pages
+├── backend/           # FastAPI detection server
+│   ├── main.py           # Detection API endpoints
+│   └── best.pt           # Trained YOLO model weights
+├── cv_model/          # Model training scripts and results
+└── rtsp-stream-worker/   # RTSP streaming worker (optional)
+```
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- Docker (optional, for backend deployment)
+
+### Frontend Setup
+
+```bash
+cd frontend
+npm install
+```
+
+Create `.env.local` with required environment variables:
+```env
+TWELVE_LABS_API_KEY=your_api_key
+TWELVE_LABS_INDEX_ID=your_index_id
+BLOB_READ_WRITE_TOKEN=your_blob_token
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+```
+
+Run the development server:
+```bash
+npm run dev
+```
+
+### Backend Setup
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+Set environment variables:
+```env
+MODEL_PATH=best.pt
+FRONTEND_URL=http://localhost:3000
+BLOB_READ_WRITE_TOKEN=your_blob_token
+```
+
+Run the server:
+```bash
+python main.py
+```
+
+## API Endpoints
+
+### Backend (Detection API)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check and model status |
+| POST | `/detect` | Start detection from blob URL |
+| POST | `/detect/upload` | Direct video upload for detection |
+| GET | `/status/{video_id}` | Get processing status |
+
+## Environment Variables
+
+### Frontend
+| Variable | Description |
+|----------|-------------|
+| `TWELVE_LABS_API_KEY` | TwelveLabs API key |
+| `TWELVE_LABS_INDEX_ID` | TwelveLabs index ID |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token |
+| `NEXT_PUBLIC_BACKEND_URL` | Backend API URL |
+
+### Backend
+| Variable | Description |
+|----------|-------------|
+| `MODEL_PATH` | Path to YOLO model weights |
+| `FRONTEND_URL` | Frontend URL for callbacks |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token |
+| `PORT` | Server port (default: 8000) |
