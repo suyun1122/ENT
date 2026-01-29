@@ -23,9 +23,15 @@ export default function ClipSort({ clipData = [], onFilterChange }) {
     "Removing gallbladder or organs"
   ];
 
-  const handleExampleClick = (example) => {
+  const handleExampleClick = async (example) => {
     setSearchQuery(example);
     setShowExamples(false);
+    // Perform search immediately with the example query
+    const filteredClips = await filterAndSortClips(clipData, example);
+    setHasSearchResults(true);
+    if (onFilterChange) {
+      onFilterChange(filteredClips, true);
+    }
   };
 
   // Search function - integrates with Twelve Labs API

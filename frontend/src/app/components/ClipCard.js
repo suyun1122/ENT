@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import Hls from 'hls.js';
 import { useRouter } from 'next/navigation';
 
-export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, category, priority, searchScore, searchConfidence, clipStart, clipEnd, isClip, isSearchResult }) {
+export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, category, priority, searchScore, searchConfidence, clipStart, clipEnd, isClip, isSearchResult, onSearchResultClick }) {
     const [hovered, setHovered] = useState(false);
     const [imageError, setImageError] = useState(false);
     const videoRef = useRef(null);
@@ -90,7 +90,12 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
 
     const handleClick = () => {
         console.log('View clip details for:', vss_id || name);
-        router.push(`/clips/${name}`); // Navigate to clip detail page
+        // If this is a search result, open modal instead of navigating
+        if (isSearchResult && onSearchResultClick) {
+            onSearchResultClick();
+        } else {
+            router.push(`/clips/${name}`); // Navigate to clip detail page
+        }
     };
 
     // Get confidence badge styles based on score
