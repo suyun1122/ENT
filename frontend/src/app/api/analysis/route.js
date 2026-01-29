@@ -110,7 +110,19 @@ export async function POST(request) {
             temperature: 0.2
         });
 
-        return new Response(JSON.stringify(response), { status: 200 });
+        // Add debug info to response
+        const detectedTools = toolData?.detections?.flatMap(d => d.tools.map(t => t.class_name)) || [];
+        const uniqueTools = [...new Set(detectedTools)];
+
+        const responseWithDebug = {
+            ...response,
+            _debug: {
+                toolDetectionUsed: !!toolContext,
+                toolsDetected: uniqueTools
+            }
+        };
+
+        return new Response(JSON.stringify(responseWithDebug), { status: 200 });
 
     } catch (error) {
         console.error("Error during analysis", error);
