@@ -8,6 +8,76 @@ export const dynamic = 'force-dynamic';
 
 const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
 
+const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
+
+// Helper: fetch tool detection data from blob or Railway backend
+async function fetchToolDetection(videoId) {
+    // 1. Try Vercel Blob first
+    if (BLOB_STORE_BASE_URL) {
+        const blobUrl = `${BLOB_STORE_BASE_URL}/detections/${videoId}.json`;
+        try {
+            const response = await fetch(blobUrl);
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[Timeline] Loaded tool detection from Blob: ${data.detections?.length || 0} frames`);
+                return data;
+            }
+        } catch (error) {
+            console.log(`[Timeline] Blob fetch error: ${error.message}`);
+        }
+    }
+
+    // 2. Try Railway backend
+    if (TOOL_DETECTION_BACKEND_URL) {
+        try {
+            const railwayUrl = `${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`;
+            console.log(`[Timeline] Trying Railway backend: ${railwayUrl}`);
+            const response = await fetch(railwayUrl);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.status === 'completed' && result.data) {
+                    console.log(`[Timeline] Loaded tool detection from Railway: ${result.data.detections?.length || 0} frames`);
+                    return result.data;
+                }
+            }
+        } catch (error) {
+            console.log(`[Timeline] Railway fetch error: ${error.message}`);
+        }
+    }
+
+    console.log(`[Timeline] No tool detection data found for ${videoId}`);
+    return null;
+}
+
+// Helper: format tool detection for timeline prompt
+function formatToolDetectionForPrompt(toolData) {
+    if (!toolData || !toolData.detections || toolData.detections.length === 0) {
+        return null;
+    }
+
+    // Create a timeline of tool appearances
+    const toolTimeline = [];
+    toolData.detections.forEach(detection => {
+        const toolNames = detection.tools.map(t => t.class_name);
+        if (toolNames.length > 0) {
+            toolTimeline.push({
+                timestamp: detection.timestamp,
+                tools: [...new Set(toolNames)]
+            });
+        }
+    });
+
+    // Format as readable text
+    let summary = 'TOOL DETECTION TIMELINE (from AI vision model):\n';
+    toolTimeline.forEach(entry => {
+        const mins = Math.floor(entry.timestamp / 60);
+        const secs = Math.floor(entry.timestamp % 60);
+        summary += `- ${mins}:${secs.toString().padStart(2, '0')}: ${entry.tools.join(', ')}\n`;
+    });
+
+    return summary;
+}
+
 // Lazy TwelveLabs client
 let twelvelabs_client = null;
 function getTwelveLabsClient() {
@@ -58,7 +128,8 @@ You MUST use one or more of the following standardized chapter titles:
 
 - NEVER invent or assume clinical information not visible in the video.
 - Use ONLY the predefined chapter titles listed above.
-- Chapters must be chronological and non-overlapping.`;
+- Chapters must be chronological and non-overlapping.
+- If tool detection data is provided, use tool transitions to help identify phase boundaries.`;
 
 // Helper: get blob URL
 function getBlobUrl(videoId) {
@@ -141,13 +212,26 @@ export async function POST(request, { params }) {
     console.log(`[Timeline] Starting timeline generation for ${videoId}`);
 
     try {
-        // 1. Call TwelveLabs API
+        // 1. Fetch tool detection data to enrich prompt
+        const toolData = await fetchToolDetection(videoId);
+        const toolContext = formatToolDetectionForPrompt(toolData);
+
+        // 2. Build enriched prompt
+        let enrichedPrompt = timelinePrompt;
+        if (toolContext) {
+            enrichedPrompt = `${timelinePrompt}\n\n## REFERENCE DATA\n\n${toolContext}\nUse this tool detection timeline to help identify surgical phase transitions (e.g., when specific tools appear/disappear can indicate phase changes).`;
+            console.log(`[Timeline] Enriched prompt with tool detection data`);
+        } else {
+            console.log(`[Timeline] No tool detection data available, using base prompt`);
+        }
+
+        // 3. Call TwelveLabs API
         console.log(`[Timeline] Calling TwelveLabs API...`);
         const startTime = Date.now();
 
         const response = await getTwelveLabsClient().analyze({
             videoId: videoId,
-            prompt: timelinePrompt,
+            prompt: enrichedPrompt,
             temperature: 0.2
         });
 

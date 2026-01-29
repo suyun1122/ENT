@@ -13,7 +13,8 @@
       "Bash(npm run build:*)",
       "Bash(curl:*)",
       "Bash(VIDEO_FILE=\"/Users/Miranda/twelveLabs/surgical-tool-detection/Surgical removal of a malignant brain tumor \\(glioblastoma multiforme or GBM\\) in a young patient..mp4\")",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node scripts/cleanup-blob.mjs:*)"
     ]
   }
 }

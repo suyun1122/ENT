@@ -8,6 +8,83 @@ export const dynamic = 'force-dynamic';
 
 const BLOB_STORE_BASE_URL = process.env.BLOB_STORE_BASE_URL;
 
+const TOOL_DETECTION_BACKEND_URL = process.env.TOOL_DETECTION_BACKEND_URL;
+
+// Helper: fetch tool detection data from blob or Railway backend
+async function fetchToolDetection(videoId) {
+    // 1. Try Vercel Blob first
+    if (BLOB_STORE_BASE_URL) {
+        const blobUrl = `${BLOB_STORE_BASE_URL}/detections/${videoId}.json`;
+        try {
+            const response = await fetch(blobUrl);
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[SOAP] Loaded tool detection from Blob: ${data.detections?.length || 0} frames`);
+                return data;
+            }
+        } catch (error) {
+            console.log(`[SOAP] Blob fetch error: ${error.message}`);
+        }
+    }
+
+    // 2. Try Railway backend
+    if (TOOL_DETECTION_BACKEND_URL) {
+        try {
+            const railwayUrl = `${TOOL_DETECTION_BACKEND_URL}/status/${videoId}`;
+            console.log(`[SOAP] Trying Railway backend: ${railwayUrl}`);
+            const response = await fetch(railwayUrl);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.status === 'completed' && result.data) {
+                    console.log(`[SOAP] Loaded tool detection from Railway: ${result.data.detections?.length || 0} frames`);
+                    return result.data;
+                }
+            }
+        } catch (error) {
+            console.log(`[SOAP] Railway fetch error: ${error.message}`);
+        }
+    }
+
+    console.log(`[SOAP] No tool detection data found for ${videoId}`);
+    return null;
+}
+
+// Helper: format tool detection for prompt
+function formatToolDetectionForPrompt(toolData) {
+    if (!toolData || !toolData.detections || toolData.detections.length === 0) {
+        return null;
+    }
+
+    // Create a summary of tool usage with timestamps
+    const toolUsage = {};
+    toolData.detections.forEach(detection => {
+        detection.tools.forEach(tool => {
+            if (!toolUsage[tool.class_name]) {
+                toolUsage[tool.class_name] = [];
+            }
+            toolUsage[tool.class_name].push({
+                timestamp: detection.timestamp,
+                confidence: tool.confidence
+            });
+        });
+    });
+
+    // Format as readable text
+    let summary = 'DETECTED SURGICAL TOOLS (from AI vision model):\n';
+    for (const [toolName, usages] of Object.entries(toolUsage)) {
+        const timestamps = usages.map(u => {
+            const mins = Math.floor(u.timestamp / 60);
+            const secs = Math.floor(u.timestamp % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        });
+        // Group consecutive timestamps into ranges
+        const uniqueTimestamps = [...new Set(timestamps)];
+        summary += `- ${toolName}: detected at ${uniqueTimestamps.slice(0, 10).join(', ')}${uniqueTimestamps.length > 10 ? ` (and ${uniqueTimestamps.length - 10} more)` : ''}\n`;
+    }
+
+    return summary;
+}
+
 // Lazy TwelveLabs client
 let twelvelabs_client = null;
 function getTwelveLabsClient() {
@@ -56,7 +133,8 @@ Return JSON only with no additional commentary:
 - NEVER invent or assume clinical information not visible in the video.
 - Write the entire operative note in FIRST-PERSON PAST TENSE.
 - If you cannot determine a detail, acknowledge it (e.g., "specifics not visible").
-- Focus on what is surgically relevant and observable.`;
+- Focus on what is surgically relevant and observable.
+- If tool detection data is provided below, incorporate the detected tools into the Objective section.`;
 
 // Helper: get blob URL
 function getBlobUrl(videoId) {
@@ -139,13 +217,26 @@ export async function POST(request, { params }) {
     console.log(`[SOAP] Starting SOAP note generation for ${videoId}`);
 
     try {
-        // 1. Call TwelveLabs API
+        // 1. Fetch tool detection data to enrich prompt
+        const toolData = await fetchToolDetection(videoId);
+        const toolContext = formatToolDetectionForPrompt(toolData);
+
+        // 2. Build enriched prompt
+        let enrichedPrompt = soapPrompt;
+        if (toolContext) {
+            enrichedPrompt = `${soapPrompt}\n\n## REFERENCE DATA\n\n${toolContext}\nUse this tool detection data to provide accurate tool names and usage times in the operative note.`;
+            console.log(`[SOAP] Enriched prompt with tool detection data`);
+        } else {
+            console.log(`[SOAP] No tool detection data available, using base prompt`);
+        }
+
+        // 3. Call TwelveLabs API
         console.log(`[SOAP] Calling TwelveLabs API...`);
         const startTime = Date.now();
 
         const response = await getTwelveLabsClient().analyze({
             videoId: videoId,
-            prompt: soapPrompt,
+            prompt: enrichedPrompt,
             temperature: 0.2
         });
 
