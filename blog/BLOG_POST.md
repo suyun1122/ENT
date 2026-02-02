@@ -33,7 +33,7 @@ Our application follows a hybrid architecture where the "eyes" (Computer Vision)
 
 1.  **Video Ingestion**: The user uploads a laparoscopic surgery video.
 2.  **Tool Detection**: A YOLOv8 model (trained on 7 distinct surgical tools) scans the video and outputs a JSON file of detections.
-3.  **Video Indexing**: The video is indexed by Twelve Labs to enable semantic search and summarization.
+3.  **Video Indexing**: The video is indexed by Twelve Labs to enable semantic search and analysis.
 4.  **Context Fusion**: When the user asks a question, we inject the YOLO tool data into the prompt, allowing the Twelve Labs model to "know" exactly when specific tools were used.
 
 ## Application Demo
@@ -51,7 +51,7 @@ Upon video upload and indexing, the system **automatically** generates a first-p
 ![Automated SOAP Note](./images/soap_note_view.png)
 
 ### 3. Surgical Phase Segmentation (Chapters)
-The Twelve Labs Summarize API automatically breaks the surgery into distinct phases like "Preparation," "Dissection," and "Closure." These chapters appear on the timeline, enabling quick navigation to specific surgical stages.
+The Twelve Labs Analyze API automatically breaks the surgery into distinct phases like "Preparation," "Dissection," and "Closure." These chapters appear on the timeline, enabling quick navigation to specific surgical stages.
 
 ![Tool Usage Statistics showing bar charts of instrument frequency](./images/timeline_view.png)
 
@@ -117,7 +117,7 @@ When a user uploads a surgical video, two parallel pipelines activate:
 
 ## How Twelve Labs Powers Intelligence
 
-While YOLO gives us the "what" and "when," Twelve Labs gives us the "why" and "how." Let's examine the three primary APIs we use: **Analyze** (SOAP generation), **Summarize** (chapters), and **Search** (semantic retrieval).
+While YOLO gives us the "what" and "when," Twelve Labs gives us the "why" and "how." Let's examine the three primary APIs we use: **Analyze** (SOAP generation & chapters) and **Search** (semantic retrieval).
 
 ### 1. Analyze API: SOAP Note Generation
 
@@ -156,7 +156,7 @@ await saveToBlob(videoId, { operative_note: parsedData.operative_note });
 
 ### 2. Analyze API: Chapter Generation (Structured Output)
 
-The **Analyze API** is also used for chapter generation by leveraging the `responseFormat` parameter to request structured JSON output. This replaces the deprecated `summarize` API.
+The **Analyze API** is also used for chapter generation by leveraging the `responseFormat` parameter to request structured JSON output. This provides structured, schema-validated output from the Analyze API.
 
 **Code: `frontend/src/app/api/timeline/route.js`**
 
@@ -302,7 +302,7 @@ The Next.js API routes orchestrate the entire intelligence layer. Three key endp
 
 1.  **`GET /api/detect-tools/{videoId}`**: Retrieves YOLO detections from Vercel Blob
 2.  **`POST /api/analysis/{videoId}/soap`**: Generates SOAP notes using Twelve Labs Analyze API (covered in detail above)
-3.  **`POST /api/timeline`**: Creates chapter segmentation using Twelve Labs Summarize API
+3.  **`POST /api/timeline`**: Creates chapter segmentation using Twelve Labs Analyze API
 
 These routes follow a consistent pattern:
 1.  Fetch YOLO data from Blob (if available)
