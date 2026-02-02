@@ -14,12 +14,10 @@
       "Bash(curl:*)",
       "Bash(VIDEO_FILE=\"/Users/Miranda/twelveLabs/surgical-tool-detection/Surgical removal of a malignant brain tumor \\(glioblastoma multiforme or GBM\\) in a young patient..mp4\")",
       "Bash(npx tsc:*)",
-<<<<<<< HEAD
-      "Bash(node scripts/cleanup-blob.mjs:*)"
-=======
+      "Bash(node scripts/cleanup-blob.mjs:*)",
       "Bash(du:*)",
-      "Bash(xargs:*)"
->>>>>>> 8b11436845a3cb8741e7092e084ae43e4d3f3b07
+      "Bash(xargs:*)",
+      "Bash(npx next lint:*)"
     ]
   }
 }

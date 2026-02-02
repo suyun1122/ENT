@@ -21,8 +21,11 @@ export default function ClipDetailPage({ params }) {
     }, []);
 
     // Load cached surgical analysis data after clipData is available
+    // Use pegasusId if available, otherwise fall back to id (for uploaded videos only in Marengo index)
+    const videoIdForAnalysis = clipData?.pegasusId || clipData?.id;
+
     useEffect(() => {
-        if (clipData && clipData.pegasusId) {
+        if (clipData && videoIdForAnalysis) {
             console.log(clipData)
             generateCacheData()
         }
@@ -133,14 +136,14 @@ export default function ClipDetailPage({ params }) {
 
     async function generateCacheData() {
 
-        if (!clipData || !clipData.pegasusId) {
+        if (!clipData || !videoIdForAnalysis) {
             console.warn('No clipData available for analysis yet');
             return;
         }
 
         try {
 
-            const response = await fetch(`/api/analysis/${clipData['pegasusId']}`, {
+            const response = await fetch(`/api/analysis/${videoIdForAnalysis}`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             })
@@ -411,7 +414,7 @@ export default function ClipDetailPage({ params }) {
                     {clipData ? (
                         <ClipBento
                             clipData={clipData}
-                            videoId={clipData['pegasusId']}
+                            videoId={videoIdForAnalysis}
                             initialAnalysisData={cachedData?.data}
                         />
                     ) : (
