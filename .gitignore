@@ -28,3 +28,25 @@ __pycache__*
 /cv_model/training_scripts/surgical_tool_training_runs/
 /cv_model/training_scripts/*.pt
 .vercel
+
+# Dataset - too large for repo
+/cv_model/Cholec80*/
+
+# Training logs
+/cv_model/training_scripts/training.log
+
+# Internal docs - not needed for project
+HAZEL_*.md
+HAZEL_*.txt
+PRD*.md
+COLAB_*.md
+
+# Utility scripts
+/fix_detections.py
+/run_detections.py
+
+# Misc
+/package-lock.json
+.claude/
+*.bak
+.DS_Store
