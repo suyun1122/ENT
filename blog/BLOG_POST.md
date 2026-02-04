@@ -253,20 +253,27 @@ vercel-blob/
     └── {videoId}.json    # SOAP notes & chapters
 ```
 
-**How Dr. Sage retrieves context:**
+**How Dr. Sage retrieves context (`frontend/src/app/api/analysis/route.js`):**
 ```javascript
 // When user asks: "What tools were used for dissection?"
-// 1. Fetch YOLO data
-const detections = await fetch(`${BLOB_URL}/detections/${videoId}.json`);
+// 1. Fetch YOLO data from Vercel Blob (with Railway fallback)
+const toolData = await fetchToolDetection(videoId);
 
-// 2. Fetch Twelve Labs analysis
-const analysis = await fetch(`${BLOB_URL}/analysis/${videoId}.json`);
+// 2. Format detections into a readable summary for the AI
+const toolContext = formatToolDetectionForChat(toolData);
+// Output example:
+// "[TOOL DETECTION DATA]
+//  - Grasper: 450 detections (0:05 - 12:30)
+//  - Hook: 120 detections (4:15 - 8:00)"
 
-// 3. Merge and send to Dr. Sage
-const mergedContext = {
-    tools: detections.data.detections,
-    soapNote: analysis.data.operative_note
-};
+// 3. Enrich the user's query with tool context and call Twelve Labs directly
+const enrichedQuery = toolContext ? `${userQuery}${toolContext}` : userQuery;
+
+const response = await getTwelveLabsClient().analyze({
+    videoId: videoId,
+    prompt: enrichedQuery,
+    temperature: 0.2
+});
 ```
 
 ## Step-by-Step Implementation
