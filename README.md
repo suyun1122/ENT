@@ -1,136 +1,198 @@
-# Surgical Tool Detection
+# Surgical Instrument Detection
 
-AI-powered surgical tool detection and analysis platform using YOLO computer vision and TwelveLabs video intelligence.
+这是一个本地运行的手术器械检测 demo。项目使用 YOLO 目标检测模型识别视频中的手术器械，并在网页中展示检测框、器械使用时间线、统计结果和基础运动数据分析。
 
-**Live Demo**: [https://surgical-tool-detection-dun.vercel.app](https://surgical-tool-detection-dun.vercel.app)
+当前版本是本地版：视频上传、YOLO 推理、检测结果保存和页面展示都在本机完成，无需云端视频分析服务。
 
-![Sample App Demo](frontend/public/sample_app_demo.gif)
+## Model Source
 
-## Overview
+本项目的当前权重来自 Hugging Face:
 
-This application automatically detects and tracks surgical instruments in laparoscopic surgery videos. It combines real-time YOLO-based object detection with TwelveLabs' video understanding capabilities to provide comprehensive surgical video analysis.
+```text
+https://huggingface.co/joonhaim/surgical-tool-recognition-yolo26s
+```
 
-### Key Features
+模型信息：
 
-- **Automatic Tool Detection**: YOLO-based detection of 7 surgical instruments (Bipolar, Clipper, Grasper, Hook, Irrigator, Scissors, Specimen Bag)
-- **Tool Usage Timeline**: Visual timeline showing when each tool appears in the video
-- **Usage Statistics**: Aggregated statistics on tool usage frequency and duration
-- **Video Search**: Natural language search across indexed surgical videos via TwelveLabs
-- **Clip Generation**: Create and export video clips of specific tool usage segments
+- Model: `joonhaim/surgical-tool-recognition-yolo26s`
+- Task: Object Detection
+- Library: Ultralytics
+- License: MIT
+- Dataset: `joonhaim/surgical-tool-recognition-full-multiview`
+- Local weight path: `backend/best.pt`
 
-### Detected Surgical Tools
+当前 `backend/best.pt` 已经替换为该模型权重。使用 Python 加载后，模型类别为：
 
-| Tool | Color |
-|------|-------|
-| Bipolar | Red |
-| Clipper | Cyan |
-| Grasper | Yellow |
-| Hook | Green |
-| Irrigator | Blue |
-| Scissors | Purple |
-| Specimen Bag | Pink |
+| Class ID | Class Name |
+| --- | --- |
+| 0 | clamp |
+| 1 | needle_holder |
+| 2 | scalpel |
+| 3 | shear |
+| 4 | tweezer |
+
+如果重新替换 `backend/best.pt`，需要重启后端服务。已经生成的旧检测 JSON 不会自动更新，需要重新上传视频或重新运行检测。
+
+## What This Demo Does
+
+这个 demo 解决的问题是：手术或训练视频通常很长，人工逐帧查看器械出现时间、数量和运动情况很费时间。这个项目把视频中的器械检测结果转成结构化数据，并用网页可视化展示。
+
+主要功能：
+
+- 上传本地视频
+- 使用 YOLO 模型检测手术器械
+- 在视频播放器上显示检测框 overlay
+- 按类别筛选检测框
+- 展示连续器械使用时间线
+- 展示器械检测数量和平均置信度
+- 基于检测框中心点计算运动数据
+- 导出运动数据 JSON 和 CSV
+
+## Project Structure
+
+```text
+surgical-tool-detection/
+├── backend/
+│   ├── main.py              # FastAPI YOLO inference server
+│   ├── best.pt              # Current Hugging Face YOLO weight
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── frontend/
+│   ├── src/app/
+│   │   ├── api/local-upload/        # Local video upload and YOLO backend call
+│   │   ├── api/motion/[videoId]/    # Motion data JSON/CSV export
+│   │   ├── clips/                   # Video library and detail pages
+│   │   ├── components/              # Player, overlay, timeline, statistics
+│   │   ├── constants/toolColors.js  # Tool color mapping
+│   │   └── utils/                   # Timeline and motion analysis utilities
+│   ├── public/uploads/              # Local uploaded videos, ignored by git
+│   ├── public/detections/           # Local detection JSON, ignored by git
+│   └── data/                        # Local video index, ignored by git
+│
+└── cv_model/
+    └── training_scripts/            # Optional local training/inference scripts
+```
 
 ## Tech Stack
 
-### Frontend
-- **Framework**: Next.js 15 with Turbopack
-- **UI**: React 19, Tailwind CSS 4
-- **Video**: HLS.js for video playback
-- **API**: TwelveLabs JS SDK for video intelligence
-- **Storage**: Vercel Blob, AWS S3
+Frontend:
 
-### Backend
-- **Framework**: FastAPI (Python)
-- **ML Model**: YOLO (Ultralytics) for object detection
-- **Video Processing**: OpenCV
-- **Deployment**: Docker, Railway
+- Next.js 15
+- React 19
+- Tailwind CSS
+- Canvas overlay
 
-## Repository Structure
+Backend:
 
-```
-├── frontend/          # Next.js web application
-│   ├── src/app/
-│   │   ├── components/   # React components (Timeline, Statistics, etc.)
-│   │   ├── api/          # API routes
-│   │   └── clips/        # Clip management pages
-├── backend/           # FastAPI detection server
-│   ├── main.py           # Detection API endpoints
-│   └── best.pt           # Trained YOLO model weights
-├── cv_model/          # Model training scripts and results
-└── rtsp-stream-worker/   # RTSP streaming worker (optional)
-```
+- FastAPI
+- Ultralytics YOLO
+- OpenCV
+- Python
 
-## Getting Started
+## Local Setup
 
-### Prerequisites
-- Node.js 18+
-- Python 3.10+
-- Docker (optional, for backend deployment)
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-```
-
-Create `.env.local` with required environment variables:
-```env
-TWELVE_LABS_API_KEY=your_api_key
-TWELVE_LABS_INDEX_ID=your_index_id
-BLOB_READ_WRITE_TOKEN=your_blob_token
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-```
-
-Run the development server:
-```bash
-npm run dev
-```
-
-### Backend Setup
+### 1. Start Backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
-```
-
-Set environment variables:
-```env
-MODEL_PATH=best.pt
-FRONTEND_URL=http://localhost:3000
-BLOB_READ_WRITE_TOKEN=your_blob_token
-```
-
-Run the server:
-```bash
 python main.py
 ```
 
-## API Endpoints
+Default backend URL:
 
-### Backend (Detection API)
+```text
+http://127.0.0.1:8000
+```
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check and model status |
-| POST | `/detect` | Start detection from blob URL |
-| POST | `/detect/upload` | Direct video upload for detection |
-| GET | `/status/{video_id}` | Get processing status |
+Optional environment variables:
 
-## Environment Variables
+```env
+MODEL_PATH=best.pt
+PORT=8000
+```
 
-### Frontend
-| Variable | Description |
-|----------|-------------|
-| `TWELVE_LABS_API_KEY` | TwelveLabs API key |
-| `TWELVE_LABS_INDEX_ID` | TwelveLabs index ID |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token |
-| `NEXT_PUBLIC_BACKEND_URL` | Backend API URL |
+### 2. Start Frontend
 
-### Backend
-| Variable | Description |
-|----------|-------------|
-| `MODEL_PATH` | Path to YOLO model weights |
-| `FRONTEND_URL` | Frontend URL for callbacks |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token |
-| `PORT` | Server port (default: 8000) |
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000/clips
+```
+
+If the backend uses another URL, create `frontend/.env.local`:
+
+```env
+LOCAL_YOLO_BACKEND_URL=http://127.0.0.1:8000
+```
+
+## Workflow
+
+1. Open `/clips`.
+2. Upload a local video.
+3. The frontend saves the video under `frontend/public/uploads/`.
+4. The frontend calls the backend endpoint `/detect/upload`.
+5. The backend loads `backend/best.pt` and runs YOLO inference.
+6. Detection results are saved under `frontend/public/detections/`.
+7. The detail page displays the video, bounding boxes, timeline, statistics and motion analysis.
+
+## Detection JSON Format
+
+The backend produces JSON similar to:
+
+```json
+{
+  "video_id": "local-...",
+  "model": "best.pt",
+  "video_properties": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "duration": 80.8
+  },
+  "detections": [
+    {
+      "frame": 360,
+      "timestamp": 12,
+      "tools": [
+        {
+          "class_id": 1,
+          "class_name": "needle_holder",
+          "confidence": 0.72,
+          "bbox": {
+            "x1": 100,
+            "y1": 120,
+            "x2": 260,
+            "y2": 300,
+            "width": 160,
+            "height": 180
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## GitHub Notes
+
+The following files are local runtime data and are ignored by git:
+
+- `frontend/data/`
+- `frontend/public/uploads/`
+- `frontend/public/detections/`
+- `frontend/public/analysis/`
+- `backend/best.previous-*.pt`
+
+The active model file `backend/best.pt` is kept in the repository because it is required to run the demo.
+
+## Disclaimer
+
+This project is a demo for surgical instrument detection and motion visualization. It is not a medical diagnosis system. Detection results may contain false positives or missed detections and should be reviewed manually before any real use.

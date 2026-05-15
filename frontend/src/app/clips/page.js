@@ -1,201 +1,144 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import ClipSort from '../components/ClipSort';
-import UploadVideo from '../components/UploadVideo';
-import ClipCard from '../components/ClipCard';
-import SearchResultModal from '../components/SearchResultModal';
-import { useUpload } from '../contexts/UploadContext';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import ClipCard from "../components/ClipCard";
+import UploadVideo from "../components/UploadVideo";
+import { useUpload } from "../contexts/UploadContext";
+
+function toClip(video, key) {
+  const videoUrl = video.video_url || video.hls?.video_url || "";
+  const thumbnailUrl =
+    video.thumbnail_url || video.hls?.thumbnail_urls?.[0] || video.thumbnail_urls?.[0] || "";
+
+  return {
+    id: video.id || video.pegasusId || key,
+    pegasusId: video.pegasusId || video.id || key,
+    filename: video.filename || key,
+    createdAt: video.createdAt || video.created_at || new Date().toISOString(),
+    duration: video.duration || video.video_properties?.duration || 0,
+    video_url: videoUrl,
+    thumbnail_url: thumbnailUrl,
+    hls: video.hls || {
+      video_url: videoUrl,
+      thumbnail_urls: [thumbnailUrl],
+    },
+  };
+}
 
 export default function Clips() {
-
   const [isVisible, setIsVisible] = useState(false);
-  const [clipData, setClipData] = useState([]);
-  const [filteredClipData, setFilteredClipData] = useState([]);
-  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [clips, setClips] = useState([]);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
   const { onUploadComplete } = useUpload();
 
-  // Modal state for search results
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedClipIndex, setSelectedClipIndex] = useState(0);
-
-  // Handle opening modal for search result
-  const handleSearchResultClick = (clipIndex) => {
-    setSelectedClipIndex(clipIndex);
-    setIsModalOpen(true);
-  };
-
-  // Handle modal navigation
-  const handleModalNavigate = (newIndex) => {
-    if (newIndex >= 0 && newIndex < filteredClipData.length) {
-      setSelectedClipIndex(newIndex);
-    }
-  };
-
-  // Memoize loadClipData to avoid dependency issues
-  const loadClipData = useCallback(async () => {
-
-    console.log("Loading clip data from TwelveLabs");
+  const loadClips = useCallback(async () => {
+    setError("");
 
     try {
-        // Fetch Twelve Labs video data
-        const response = await fetch('/api/video', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
+      const response = await fetch("/api/video", {
+        method: "GET",
+        cache: "no-store",
+      });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Failed to load clip data from TwelveLabs", {
-                status: response.status,
-                statusText: response.statusText,
-                error: errorText
-            });
-            // Show user-friendly error message
-            alert(`Failed to load videos: ${response.status} ${response.statusText}. Check console for details.`);
-            return;
-        }
+      if (!response.ok) {
+        throw new Error(`Failed to load local videos: ${response.status}`);
+      }
 
-        const data = await response.json();
-        console.log("TwelveLabs video data:", data);
+      const data = await response.json();
+      const nextClips = Object.entries(data || {})
+        .map(([key, video]) => toClip(video, key))
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        // Convert TwelveLabs video data to clip format
-        const clips = Object.values(data).map((video) => {
-            return {
-                id: video.id || video.pegasusId,
-                pegasusId: video.pegasusId || video.id,
-                filename: video.filename || video.systemMetadata?.filename || 'Unknown',
-                createdAt: video.createdAt || video.created_at || new Date().toISOString(),
-                duration: video.duration || video.metadata?.duration || 0,
-                // Use video URL from TwelveLabs if available, otherwise use placeholder
-                video_url: video.video_url || video.hls?.video_url || '',
-                thumbnail_url: video.thumbnail_url || video.hls?.thumbnail_urls?.[0] || video.thumbnail_urls?.[0] || '',
-                vss_id: video.vss_id || video.id,
-                searchScore: video.searchScore,
-                searchConfidence: video.searchConfidence,
-                // Add hls object for compatibility with ClipCard
-                hls: video.hls || {
-                    video_url: video.video_url || '',
-                    thumbnail_urls: video.thumbnail_urls || [video.thumbnail_url || '']
-                }
-            };
-        });
-
-        console.log("Converted clips:", clips);
-        setClipData(clips);
-
-        return clips;
-
-    } catch (error) {
-        console.error("Error loading clip data", error);
-        // Try to load from VSS if available (fallback)
-        const VSS_BASE_URL = process.env.NEXT_PUBLIC_VSS_BASE_URL;
-        if (VSS_BASE_URL) {
-            try {
-                console.log("Attempting to load from VSS as fallback");
-                const vss_response = await fetch(`${VSS_BASE_URL}/files?purpose=vision`);
-                if (vss_response.ok) {
-                    const vss_data = await vss_response.json();
-                    const vss_file_data = vss_data['data'] || [];
-
-                    const response = await fetch('/api/video');
-                    if (response.ok) {
-                        const data = await response.json();
-                        for (let fileData of vss_file_data) {
-                            const fileName = fileData['filename'];
-                            if (fileName in data) {
-                                data[fileName]['vss_id'] = fileData['id'];
-                            }
-                        }
-                        setClipData(data);
-                    }
-                }
-            } catch (vssError) {
-                console.error("VSS fallback also failed", vssError);
-            }
-        }
-        return;
+      setClips(nextClips);
+    } catch (loadError) {
+      console.error("[clips] Failed to load local videos:", loadError);
+      setError(loadError.message || "Failed to load local videos");
+      setClips([]);
     }
   }, []);
 
   useEffect(() => {
-    loadClipData();
-    // Trigger animations after component mounts
+    loadClips();
     const timer = setTimeout(() => setIsVisible(true), 100);
     return () => clearTimeout(timer);
-  }, [loadClipData]);
+  }, [loadClips]);
 
-  // Subscribe to upload completion to refresh the list
   useEffect(() => {
-    const unsubscribe = onUploadComplete(() => {
-      console.log('Upload completed, refreshing clip list...');
-      loadClipData();
+    return onUploadComplete(() => {
+      loadClips();
     });
-    return unsubscribe;
-  }, [onUploadComplete, loadClipData]);
+  }, [onUploadComplete, loadClips]);
 
-  // Update filtered data when clipData changes
-  useEffect(() => {
-    setFilteredClipData(clipData);
-  }, [clipData]);
-
-  // Handle filter changes from ClipSort component
-  const handleFilterChange = (filteredClips, isSearch = false) => {
-    setFilteredClipData(filteredClips);
-    setIsSearchActive(isSearch);
-  };
+  const filteredClips = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return clips;
+    return clips.filter((clip) => clip.filename.toLowerCase().includes(needle));
+  }, [clips, query]);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--zinc-100)' }}>
-      <ClipSort clipData={clipData} onFilterChange={handleFilterChange} />
-
-      {/* Header Section */}
+    <div className="min-h-screen" style={{ backgroundColor: "var(--zinc-100)" }}>
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold text-gray-900">
+              Surgical Video Intelligence
+            </h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Local video library with YOLO surgical tool detection.
+            </p>
+          </div>
 
-        {/* Video Grid */}
-        <div className={`transition-all duration-1000 delay-800 ease-out ${
-          isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-        }`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-
-            {/* Upload Video Component - Hidden during search */}
-            {!isSearchActive && <UploadVideo />}
-
-            {/* Clip Cards */}
-            {filteredClipData && (Array.isArray(filteredClipData) ? filteredClipData : Object.values(filteredClipData)).map((clip, index) => (
-              <ClipCard
-                key={clip.clipId || clip.id || clip.pegasusId || index}
-                vss_id={clip.vss_id || clip.id}
-                video_url={clip.hls?.video_url || clip.video_url || ''}
-                thumbnail_url={clip.hls?.thumbnail_urls?.[0] || clip.thumbnail_url || ''}
-                createdAt={clip.createdAt}
-                duration={clip.duration}
-                name={clip.filename || clip.name || 'Untitled'}
-                searchScore={clip.searchScore}
-                searchConfidence={clip.searchConfidence}
-                clipStart={clip.clipStart}
-                clipEnd={clip.clipEnd}
-                isClip={clip.isClip}
-                isSearchResult={isSearchActive}
-                onSearchResultClick={() => handleSearchResultClick(index)}
-              />
-            ))}
-
+          <div className="w-full md:w-80">
+            <label htmlFor="clip-search" className="sr-only">
+              Search by filename
+            </label>
+            <input
+              id="clip-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search filename"
+              className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-900"
+            />
           </div>
         </div>
-      </div>
 
-      {/* Search Result Modal */}
-      <SearchResultModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        clip={filteredClipData[selectedClipIndex]}
-        allClips={filteredClipData}
-        currentIndex={selectedClipIndex}
-        onNavigate={handleModalNavigate}
-      />
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div
+          className={`transition-all duration-700 ease-out ${
+            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <UploadVideo />
+
+            {filteredClips.map((clip) => (
+              <ClipCard
+                key={clip.id || clip.filename}
+                hrefId={clip.id || clip.filename}
+                vss_id={clip.id}
+                video_url={clip.video_url}
+                thumbnail_url={clip.thumbnail_url}
+                createdAt={clip.createdAt}
+                duration={clip.duration}
+                name={clip.filename || "Untitled"}
+              />
+            ))}
+          </div>
+
+          {filteredClips.length === 0 && clips.length > 0 && (
+            <p className="mt-8 text-center text-sm text-gray-500">
+              No local videos match that filename.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

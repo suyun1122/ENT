@@ -262,7 +262,7 @@ export default function SearchResultModal({
                     {'{'}
                     {Object.entries(responseData).map(([key, value], idx) => (
                       <div key={key} className="pl-4">
-                        <span className="text-gray-600">"{key}"</span>
+                        <span className="text-gray-600">{`"${key}"`}</span>
                         <span className="text-gray-400">: </span>
                         <span className={typeof value === 'number' ? 'text-orange-600' : 'text-green-700'}>
                           {typeof value === 'string' ? `"${value}"` : value}

@@ -1,114 +1,43 @@
-import { TwelveLabs, TwelvelabsApi } from 'twelvelabs-js';
+import { NextResponse } from "next/server";
+import { promises as fs } from "fs";
+import path from "path";
 
-// Lazy initialization to avoid build-time errors
-let twelvelabs_client = null;
-function getTwelveLabsClient() {
-    if (!twelvelabs_client) {
-        twelvelabs_client = new TwelveLabs({ apiKey: process.env.TWELVELABS_API_KEY });
-    }
-    return twelvelabs_client;
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export async function GET(request) {
+const VIDEOS_PATH = path.join(process.cwd(), "data", "videos.json");
 
-    /*
-    Retrieves all videos from the TwelveLabs index which can be mapped to the VSS database.
-    */
+export async function GET() {
+  try {
+    const raw = await fs.readFile(VIDEOS_PATH, "utf-8");
+    const videos = JSON.parse(raw || "{}");
 
-    try {
-        // Check if API key is set
-        if (!process.env.TWELVELABS_API_KEY) {
-            return new Response(JSON.stringify({
-                error: 'TWELVELABS_API_KEY is not set in environment variables'
-            }), { status: 500 });
-        }
-
-        // Check if index IDs are set
-        const marengoIndexId = process.env.NEXT_PUBLIC_TWELVELABS_MARENGO_INDEX_ID;
-        const pegasusIndexId = process.env.NEXT_PUBLIC_TWELVELABS_PEGASUS_INDEX_ID;
-
-        if (!marengoIndexId || !pegasusIndexId) {
-            return new Response(JSON.stringify({
-                error: 'Index IDs are not set in environment variables'
-            }), { status: 500 });
-        }
-
-        const videoList = {}
-
-        // Fetch videos from Marengo index
-        try {
-            const videoPager = await getTwelveLabsClient().indexes.videos.list(marengoIndexId);
-            for await (const video of videoPager.data) {
-                const fileName = video.systemMetadata?.filename || video.filename || `video_${video.id}`;
-                videoList[fileName] = {
-                    ...video,
-                    ...video.systemMetadata,
-                    id: video.id,
-                    filename: fileName
-                }
-            }
-        } catch (error) {
-            console.error("Error fetching videos from Marengo index:", error);
-            // Continue even if Marengo fails
-        }
-
-        // Fetch videos from Pegasus index
-        try {
-            const videoPagerPegasus = await getTwelveLabsClient().indexes.videos.list(pegasusIndexId);
-            for await (const video of videoPagerPegasus.data) {
-                const fileName = video.systemMetadata?.filename || video.filename || `video_${video.id}`;
-                if (videoList[fileName]) {
-                    videoList[fileName]['pegasusId'] = video.id;
-                } else {
-                    videoList[fileName] = {
-                        ...video,
-                        ...video.systemMetadata,
-                        id: video.id,
-                        pegasusId: video.id,
-                        filename: fileName
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("Error fetching videos from Pegasus index:", error);
-            // Continue even if Pegasus fails
-        }
-
-        return new Response(JSON.stringify(videoList), {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-store, max-age=0',
-            }
-        });
-
-    } catch (error) {
-        console.error("Error in /api/video:", error);
-        return new Response(JSON.stringify({
-            error: 'Failed to fetch videos from TwelveLabs',
-            message: error.message,
-            details: error.toString()
-        }), {
-            status: 500,
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-    }
-
-}
-
-export async function POST(request) {
-    /*
-    S3 upload functionality removed - not needed for this use case.
-    If you need video upload, use the UploadVideo component which uploads directly to VSS.
-    */
-    return new Response(JSON.stringify({
-        error: 'S3 upload not available. Use direct VSS upload instead.'
-    }), {
-        status: 501, // Not Implemented
-        headers: {
-            'Content-Type': 'application/json'
-        }
+    return NextResponse.json(videos, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return NextResponse.json(
+        {},
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    console.error("[api/video] Failed to read local videos.json:", error);
+    return NextResponse.json(
+      { error: "Failed to read local video library" },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
 }

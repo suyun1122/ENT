@@ -1,8 +1,68 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EyeIcon, EyeSlashIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { TOOL_COLORS } from '../constants/toolColors';
+
+function numeric(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function getMedianTimestampGap(detections) {
+  if (!Array.isArray(detections) || detections.length < 2) return null;
+
+  const gaps = [];
+  for (let i = 1; i < detections.length; i += 1) {
+    const gap = detections[i].timestamp - detections[i - 1].timestamp;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+
+  if (gaps.length === 0) return null;
+
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
+}
+
+function getAdaptiveDisplayWindow(detectionData, sortedDetections) {
+  const frameSkip = numeric(detectionData?.frame_skip, 0);
+  const fps = numeric(detectionData?.video_properties?.fps, 0);
+  const intervalFromFrames = frameSkip > 0 && fps > 0 ? frameSkip / fps : null;
+  const intervalFromTimestamps = getMedianTimestampGap(sortedDetections);
+  const sampleInterval = intervalFromFrames || intervalFromTimestamps || 1;
+
+  return Math.max(0.75, sampleInterval / 2 + 0.35);
+}
+
+function findNearestDetection(detections, currentTime, maxDiffSec) {
+  if (!detections.length) return null;
+
+  let left = 0;
+  let right = detections.length - 1;
+
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2);
+    if (detections[middle].timestamp < currentTime) {
+      left = middle + 1;
+    } else {
+      right = middle;
+    }
+  }
+
+  const candidates = [detections[left], detections[left - 1]].filter(Boolean);
+  let nearest = null;
+  let nearestDiff = Infinity;
+
+  for (const detection of candidates) {
+    const diff = Math.abs(detection.timestamp - currentTime);
+    if (diff < nearestDiff) {
+      nearest = detection;
+      nearestDiff = diff;
+    }
+  }
+
+  return nearestDiff <= maxDiffSec ? nearest : null;
+}
 
 /**
  * ToolDetectionOverlay Component
@@ -17,87 +77,139 @@ export default function ToolDetectionOverlay({
   enabledTools = null // null means all tools enabled
 }) {
   const canvasRef = useRef(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0, dpr: 1 });
   const [currentDetections, setCurrentDetections] = useState([]);
+
+  const sortedDetections = useMemo(() => {
+    const detections = Array.isArray(detectionData?.detections) ? detectionData.detections : [];
+    return [...detections]
+      .filter((detection) => Number.isFinite(Number(detection.timestamp)))
+      .sort((a, b) => a.timestamp - b.timestamp);
+  }, [detectionData]);
+
+  const displayWindowSec = useMemo(
+    () => getAdaptiveDisplayWindow(detectionData, sortedDetections),
+    [detectionData, sortedDetections]
+  );
 
   // Update canvas dimensions when video size changes
   useEffect(() => {
+    let animationFrame = null;
+    let resizeObserver = null;
+    let activeVideo = null;
+
     const updateDimensions = () => {
-      if (videoRef.current && canvasRef.current) {
-        const video = videoRef.current;
-        const rect = video.getBoundingClientRect();
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
 
-        setDimensions({
-          width: rect.width,
-          height: rect.height
-        });
+      const rect = video.getBoundingClientRect();
+      const parentRect = video.parentElement?.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.round(rect.width || parentRect?.width || video.clientWidth || 0);
+      const height = Math.round(rect.height || parentRect?.height || video.clientHeight || 0);
 
-        // Set canvas size to match video display size
-        canvasRef.current.width = rect.width;
-        canvasRef.current.height = rect.height;
+      if (width <= 0 || height <= 0) {
+        animationFrame = requestAnimationFrame(updateDimensions);
+        return;
       }
+
+      setDimensions({ width, height, dpr });
+
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
     };
 
-    updateDimensions();
+    const setupListeners = () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
 
-    // Update on window resize
-    window.addEventListener('resize', updateDimensions);
+      if (!video || !canvas) {
+        animationFrame = requestAnimationFrame(setupListeners);
+        return;
+      }
 
-    // Update when video metadata loads
-    if (videoRef.current) {
-      videoRef.current.addEventListener('loadedmetadata', updateDimensions);
-    }
+      activeVideo = video;
+      updateDimensions();
+
+      resizeObserver = new ResizeObserver(updateDimensions);
+      resizeObserver.observe(video);
+      if (video.parentElement) resizeObserver.observe(video.parentElement);
+
+      window.addEventListener('resize', updateDimensions);
+      video.addEventListener('loadedmetadata', updateDimensions);
+      video.addEventListener('loadeddata', updateDimensions);
+      video.addEventListener('canplay', updateDimensions);
+    };
+
+    setupListeners();
 
     return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      if (resizeObserver) resizeObserver.disconnect();
       window.removeEventListener('resize', updateDimensions);
-      if (videoRef.current) {
-        videoRef.current.removeEventListener('loadedmetadata', updateDimensions);
+      if (activeVideo) {
+        activeVideo.removeEventListener('loadedmetadata', updateDimensions);
+        activeVideo.removeEventListener('loadeddata', updateDimensions);
+        activeVideo.removeEventListener('canplay', updateDimensions);
       }
     };
   }, [videoRef]);
 
   // Update detections based on current video time
   useEffect(() => {
-    if (!videoRef.current || !detectionData || !detectionData.detections) {
-      return;
-    }
-
-    const video = videoRef.current;
+    let animationFrame = null;
+    let activeVideo = null;
 
     const updateDetections = () => {
+      const video = videoRef.current;
+      if (!video) return;
+
       const currentTime = video.currentTime;
+      const nearestDetection = findNearestDetection(
+        sortedDetections,
+        currentTime,
+        displayWindowSec
+      );
 
-      // Find detections closest to current time
-      // Use binary search for efficiency with large detection arrays
-      const detections = detectionData.detections;
+      setCurrentDetections(Array.isArray(nearestDetection?.tools) ? nearestDetection.tools : []);
+    };
 
-      // Find the detection at or just before current time
-      let closestDetection = null;
-      let minTimeDiff = Infinity;
+    const setupListeners = () => {
+      const video = videoRef.current;
 
-      for (const detection of detections) {
-        const timeDiff = Math.abs(detection.timestamp - currentTime);
-        if (timeDiff < minTimeDiff && timeDiff < 0.5) { // Within 0.5 seconds
-          minTimeDiff = timeDiff;
-          closestDetection = detection;
-        }
+      if (!video) {
+        animationFrame = requestAnimationFrame(setupListeners);
+        return;
       }
 
-      setCurrentDetections(closestDetection ? closestDetection.tools : []);
+      activeVideo = video;
+      video.addEventListener('timeupdate', updateDetections);
+      video.addEventListener('seeked', updateDetections);
+      video.addEventListener('play', updateDetections);
+      video.addEventListener('pause', updateDetections);
+      updateDetections();
     };
 
-    // Update on time update
-    video.addEventListener('timeupdate', updateDetections);
-    video.addEventListener('seeked', updateDetections);
+    if (sortedDetections.length === 0) {
+      setCurrentDetections([]);
+      return undefined;
+    }
 
-    // Initial update
-    updateDetections();
+    setupListeners();
 
     return () => {
-      video.removeEventListener('timeupdate', updateDetections);
-      video.removeEventListener('seeked', updateDetections);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      if (activeVideo) {
+        activeVideo.removeEventListener('timeupdate', updateDetections);
+        activeVideo.removeEventListener('seeked', updateDetections);
+        activeVideo.removeEventListener('play', updateDetections);
+        activeVideo.removeEventListener('pause', updateDetections);
+      }
     };
-  }, [videoRef, detectionData]);
+  }, [videoRef, sortedDetections, displayWindowSec]);
 
   // Draw bounding boxes on canvas
   useEffect(() => {
@@ -105,6 +217,7 @@ export default function ToolDetectionOverlay({
       // Clear canvas if not visible or no detections
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       }
       return;
@@ -116,13 +229,20 @@ export default function ToolDetectionOverlay({
 
     if (!video || !detectionData) return;
 
-    // Clear canvas
+    const displayWidth = dimensions.width || canvas.width;
+    const displayHeight = dimensions.height || canvas.height;
+    const dpr = dimensions.dpr || 1;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Calculate scale factors
-    const videoProps = detectionData.video_properties;
-    const scaleX = canvas.width / videoProps.width;
-    const scaleY = canvas.height / videoProps.height;
+    const videoProps = detectionData.video_properties || {};
+    const sourceWidth = numeric(videoProps.width, video.videoWidth || displayWidth);
+    const sourceHeight = numeric(videoProps.height, video.videoHeight || displayHeight);
+    const scaleX = displayWidth / sourceWidth;
+    const scaleY = displayHeight / sourceHeight;
 
     // Draw each detection
     currentDetections.forEach(detection => {
@@ -133,41 +253,50 @@ export default function ToolDetectionOverlay({
         return;
       }
 
-      const bbox = detection.bbox;
+      const bbox = detection.bbox || {};
       const color = TOOL_COLORS[toolName] || '#FFFFFF';
 
       // Scale coordinates
-      const x = bbox.x1 * scaleX;
-      const y = bbox.y1 * scaleY;
-      const width = bbox.width * scaleX;
-      const height = bbox.height * scaleY;
+      const x1 = numeric(bbox.x1, 0);
+      const y1 = numeric(bbox.y1, 0);
+      const x2 = numeric(bbox.x2, x1 + numeric(bbox.width, 0));
+      const y2 = numeric(bbox.y2, y1 + numeric(bbox.height, 0));
+      const x = Math.max(0, x1 * scaleX);
+      const y = Math.max(0, y1 * scaleY);
+      const width = Math.max(1, (x2 - x1) * scaleX);
+      const height = Math.max(1, (y2 - y1) * scaleY);
 
       // Draw bounding box
       ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      ctx.shadowBlur = 4;
       ctx.strokeRect(x, y, width, height);
+      ctx.shadowBlur = 0;
 
       // Draw label background
-      const label = `${toolName} ${(detection.confidence * 100).toFixed(0)}%`;
+      const label = `${toolName} ${(numeric(detection.confidence, 0) * 100).toFixed(0)}%`;
       ctx.font = '14px Inter, sans-serif';
       const textMetrics = ctx.measureText(label);
       const textHeight = 20;
       const padding = 4;
+      const labelX = Math.min(Math.max(0, x), Math.max(0, displayWidth - textMetrics.width - padding * 2));
+      const labelY = y - textHeight - padding < 0 ? y + 2 : y - textHeight - padding;
 
       ctx.fillStyle = color;
       ctx.fillRect(
-        x,
-        y - textHeight - padding,
+        labelX,
+        labelY,
         textMetrics.width + padding * 2,
         textHeight + padding
       );
 
       // Draw label text
       ctx.fillStyle = '#000000';
-      ctx.fillText(label, x + padding, y - padding - 4);
+      ctx.fillText(label, labelX + padding, labelY + textHeight - 4);
     });
 
-  }, [currentDetections, isVisible, enabledTools, detectionData, videoRef]);
+  }, [currentDetections, isVisible, enabledTools, detectionData, videoRef, dimensions]);
 
   if (!detectionData) return null;
 
@@ -199,17 +328,6 @@ export function ToolFilterPanel({ detectionData, enabledTools, onToggleTool, isV
     id: parseInt(id),
     name
   }));
-
-  // Tool color mapping - must match other components
-  const TOOL_COLORS = {
-    'Bipolar': '#E53935',      // Red
-    'Clipper': '#00ACC1',      // Cyan/Teal
-    'Grasper': '#FDD835',      // Yellow
-    'Hook': '#43A047',         // Green
-    'Irrigator': '#1E88E5',    // Blue
-    'Scissors': '#8E24AA',     // Purple
-    'Specimen Bag': '#F48FB1'  // Pink
-  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">

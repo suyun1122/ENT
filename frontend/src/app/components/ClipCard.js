@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import Hls from 'hls.js';
 import { useRouter } from 'next/navigation';
 
-export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, category, priority, searchScore, searchConfidence, clipStart, clipEnd, isClip, isSearchResult, onSearchResultClick }) {
+export default function ClipCard({ video_url, createdAt, duration, name, thumbnail_url, vss_id, hrefId, category, priority, searchScore, searchConfidence, clipStart, clipEnd, isClip, isSearchResult, onSearchResultClick }) {
     const [hovered, setHovered] = useState(false);
     const [imageError, setImageError] = useState(false);
     const videoRef = useRef(null);
@@ -19,11 +19,28 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
 
     useEffect(() => {
         let hls;
+        let handleLoadedMetadata;
+        let handleTimeUpdate;
+        let cleanupVideo = null;
 
         if (hovered && videoRef.current && video_url) {
             const video = videoRef.current;
+            cleanupVideo = video;
+            const isLocalVideo =
+                video_url.startsWith('/uploads/') ||
+                /\.(mp4|mov|webm|avi)(\?.*)?$/i.test(video_url);
+            const isHlsUrl = /\.m3u8(\?.*)?$/i.test(video_url);
 
-            if (Hls.isSupported()) {
+            handleLoadedMetadata = () => {
+                if (isClip && clipStart !== undefined) {
+                    video.currentTime = clipStart;
+                }
+            };
+
+            if (isLocalVideo || !isHlsUrl) {
+                video.src = video_url;
+                video.addEventListener('loadedmetadata', handleLoadedMetadata);
+            } else if (Hls.isSupported()) {
                 hls = new Hls();
                 hls.loadSource(video_url);
                 hls.attachMedia(video);
@@ -38,16 +55,12 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
                 video.src = video_url;
 
                 // If this is a clip with time range, seek to the start time
-                video.addEventListener('loadedmetadata', () => {
-                    if (isClip && clipStart !== undefined) {
-                        video.currentTime = clipStart;
-                    }
-                });
+                video.addEventListener('loadedmetadata', handleLoadedMetadata);
             }
 
             // Stop playback when reaching clip end
             if (isClip && clipEnd !== undefined) {
-                const handleTimeUpdate = () => {
+                handleTimeUpdate = () => {
                     if (video.currentTime >= clipEnd) {
                         video.currentTime = clipStart || 0;
                     }
@@ -56,6 +69,9 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
 
                 return () => {
                     video.removeEventListener('timeupdate', handleTimeUpdate);
+                    if (handleLoadedMetadata) {
+                        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                    }
                     if (hls) {
                         hls.destroy();
                     }
@@ -64,6 +80,9 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
         }
 
         return () => {
+            if (cleanupVideo && handleLoadedMetadata) {
+                cleanupVideo.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            }
             if (hls) {
                 hls.destroy();
             }
@@ -94,7 +113,7 @@ export default function ClipCard({ video_url, createdAt, duration, name, thumbna
         if (isSearchResult && onSearchResultClick) {
             onSearchResultClick();
         } else {
-            router.push(`/clips/${name}`); // Navigate to clip detail page
+            router.push(`/clips/${encodeURIComponent(hrefId || vss_id || name)}`);
         }
     };
 

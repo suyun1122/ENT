@@ -1,145 +1,126 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { TOOL_COLORS } from '../constants/toolColors';
+import {
+  DEFAULT_TIMELINE_OPTIONS,
+  buildContinuousSegments,
+  flattenTimelineDetections,
+} from '../utils/buildContinuousSegments';
 
-/**
- * ToolUsageTimeline Component
- *
- * Displays a horizontal timeline showing tool detections as segments/bars
- */
+const FALLBACK_COLORS = [
+  '#7C3AED',
+  '#059669',
+  '#EA580C',
+  '#0891B2',
+  '#C026D3',
+  '#4B5563',
+];
+
+function formatTime(seconds) {
+  const safeSeconds = Number.isFinite(Number(seconds)) ? Number(seconds) : 0;
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = Math.floor(safeSeconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getToolColor(toolName, index) {
+  return TOOL_COLORS[toolName] || FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
+
+function clampPercent(value) {
+  return Math.min(100, Math.max(0, value));
+}
+
+function groupByClassName(rows) {
+  return rows.reduce((groups, row) => {
+    const key = row.className || 'Unknown';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+    return groups;
+  }, {});
+}
+
 export default function ToolUsageTimeline({ detectionData, videoDuration, onSeekTo }) {
   const timelineRef = useRef(null);
   const [zoom, setZoom] = useState(1);
+  const [continuousMode, setContinuousMode] = useState(true);
 
-  // Merge consecutive detections into segments
-  const mergeIntoSegments = (detections, gapThreshold = 3) => {
-    if (!detections || detections.length === 0) return [];
+  const flatRows = useMemo(() => flattenTimelineDetections(detectionData), [detectionData]);
 
-    // Sort by timestamp
-    const sorted = [...detections].sort((a, b) => a.timestamp - b.timestamp);
-    const segments = [];
+  const segments = useMemo(
+    () => buildContinuousSegments(detectionData, DEFAULT_TIMELINE_OPTIONS),
+    [detectionData]
+  );
 
-    let currentSegment = {
-      start: sorted[0].timestamp,
-      end: sorted[0].timestamp,
-      avgConfidence: sorted[0].confidence,
-      count: 1
-    };
+  const pointsByTool = useMemo(() => groupByClassName(flatRows), [flatRows]);
+  const segmentsByTool = useMemo(() => groupByClassName(segments), [segments]);
 
-    for (let i = 1; i < sorted.length; i++) {
-      const detection = sorted[i];
-      const gap = detection.timestamp - currentSegment.end;
+  const toolNames = useMemo(() => {
+    const classNames = Object.values(detectionData?.classes || detectionData?.data?.classes || {});
+    return [...new Set([...classNames, ...flatRows.map((row) => row.className)])]
+      .filter(Boolean)
+      .filter((toolName) =>
+        continuousMode
+          ? (segmentsByTool[toolName] || []).length > 0
+          : (pointsByTool[toolName] || []).length > 0
+      );
+  }, [continuousMode, detectionData, flatRows, pointsByTool, segmentsByTool]);
 
-      if (gap <= gapThreshold) {
-        // Extend current segment
-        currentSegment.end = detection.timestamp;
-        currentSegment.avgConfidence =
-          (currentSegment.avgConfidence * currentSegment.count + detection.confidence) /
-          (currentSegment.count + 1);
-        currentSegment.count++;
-      } else {
-        // Save current segment and start new one
-        // Add minimum duration for visibility
-        if (currentSegment.end - currentSegment.start < 1) {
-          currentSegment.end = currentSegment.start + 1;
-        }
-        segments.push(currentSegment);
-        currentSegment = {
-          start: detection.timestamp,
-          end: detection.timestamp,
-          avgConfidence: detection.confidence,
-          count: 1
-        };
-      }
-    }
-
-    // Don't forget the last segment
-    if (currentSegment.end - currentSegment.start < 1) {
-      currentSegment.end = currentSegment.start + 1;
-    }
-    segments.push(currentSegment);
-
-    return segments;
-  };
-
-  if (!detectionData || !detectionData.detections || !videoDuration) {
+  if (!detectionData || !videoDuration || flatRows.length === 0) {
     return (
-      <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-8 text-center">
+      <div className="rounded-[20px] bg-white p-8 text-center outline outline-1 outline-offset-[-1px] outline-gray-300">
         <p className="text-gray-600">No tool detection data available</p>
       </div>
     );
   }
 
-  // Group detections by tool
-  const toolTimelines = {};
-  const toolNames = Object.values(detectionData.classes || {});
-
-  toolNames.forEach(toolName => {
-    toolTimelines[toolName] = [];
-  });
-
-  detectionData.detections.forEach(detection => {
-    detection.tools.forEach(tool => {
-      const toolName = tool.class_name;
-      if (toolTimelines[toolName]) {
-        toolTimelines[toolName].push({
-          timestamp: detection.timestamp,
-          confidence: tool.confidence
-        });
-      }
-    });
-  });
-
-  // Convert to segments for each tool
-  const toolSegments = {};
-  toolNames.forEach(toolName => {
-    toolSegments[toolName] = mergeIntoSegments(toolTimelines[toolName]);
-  });
-
-  // Format time for display
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Calculate timeline width - adjusted for better default view
-  const basePixelsPerSecond = videoDuration > 300 ? 3 : videoDuration > 120 ? 4 : 5;
-  const timelineWidth = videoDuration * zoom * basePixelsPerSecond;
-  const pixelsPerSecond = (basePixelsPerSecond * zoom);
-
-  // Generate time markers
+  const duration = Number(videoDuration);
+  const basePixelsPerSecond = duration > 300 ? 3 : duration > 120 ? 4 : 5;
+  const timelineWidth = Math.max(duration * zoom * basePixelsPerSecond, 560);
+  const markerInterval = duration > 300 ? 60 : duration > 120 ? 30 : 15;
   const timeMarkers = [];
-  const markerInterval = videoDuration > 300 ? 60 : videoDuration > 120 ? 30 : 15; // Every 60s, 30s, or 15s
-  for (let t = 0; t <= videoDuration; t += markerInterval) {
+
+  for (let t = 0; t <= duration; t += markerInterval) {
     timeMarkers.push(t);
   }
 
+  if (!timeMarkers.includes(duration)) {
+    timeMarkers.push(duration);
+  }
+
   const handleTimelineClick = (timestamp) => {
-    if (onSeekTo) {
-      onSeekTo(timestamp);
-    }
+    if (onSeekTo) onSeekTo(timestamp);
   };
 
   return (
-    <div className="bg-white rounded-[20px] outline outline-1 outline-offset-[-1px] outline-gray-300 p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-[20px] bg-white p-6 outline outline-1 outline-offset-[-1px] outline-gray-300">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h3 className="text-lg font-semibold text-gray-900">Tool Usage Timeline</h3>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
+            type="button"
+            aria-pressed={continuousMode}
+            onClick={() => setContinuousMode((value) => !value)}
+            className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+          >
+            Continuous mode: {continuousMode ? 'ON' : 'OFF'}
+          </button>
+          <button
+            type="button"
             onClick={() => setZoom(Math.max(0.5, zoom - 0.5))}
-            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded bg-gray-100 px-3 py-1.5 text-sm font-semibold hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={zoom <= 0.5}
           >
             -
           </button>
-          <span className="text-sm text-gray-600 min-w-[70px] text-center font-medium">
+          <span className="min-w-[70px] text-center text-sm font-medium text-gray-600">
             Zoom: {zoom}x
           </span>
           <button
+            type="button"
             onClick={() => setZoom(Math.min(3, zoom + 0.5))}
-            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded bg-gray-100 px-3 py-1.5 text-sm font-semibold hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={zoom >= 3}
           >
             +
@@ -147,25 +128,19 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
         </div>
       </div>
 
-      {/* Two-column layout: Labels + Timeline */}
       <div className="flex">
-        {/* Left: Tool Labels (Fixed) */}
-        <div className="flex-shrink-0 pr-4" style={{ width: '120px' }}>
-          {/* Tool labels */}
+        <div className="flex-shrink-0 pr-4" style={{ width: '130px' }}>
           <div className="space-y-3 pt-2">
-            {toolNames.map((toolName) => {
-              const segments = toolSegments[toolName] || [];
-              const color = TOOL_COLORS[toolName] || '#CCCCCC';
-
-              if (segments.length === 0) return null;
+            {toolNames.map((toolName, index) => {
+              const color = getToolColor(toolName, index);
 
               return (
-                <div key={toolName} className="flex items-center h-6">
+                <div key={toolName} className="flex h-7 items-center">
                   <div
-                    className="w-3 h-3 rounded mr-2 flex-shrink-0"
+                    className="mr-2 h-3 w-3 flex-shrink-0 rounded"
                     style={{ backgroundColor: color }}
-                  ></div>
-                  <span className="text-sm font-medium text-gray-700 truncate" title={toolName}>
+                  />
+                  <span className="truncate text-sm font-medium text-gray-700" title={toolName}>
                     {toolName}
                   </span>
                 </div>
@@ -174,94 +149,92 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
           </div>
         </div>
 
-        {/* Right: Scrollable Timeline */}
-        <div className="flex-1 overflow-x-auto border-l border-gray-200 pl-4" style={{ maxHeight: '400px' }}>
+        <div className="flex-1 overflow-x-auto border-l border-gray-200 pl-4">
           <div
             ref={timelineRef}
             className="relative"
             style={{ width: `${timelineWidth}px`, minWidth: '100%' }}
           >
-            {/* Tool lines */}
             <div className="space-y-3 pt-2">
-              {toolNames.map((toolName) => {
-                const segments = toolSegments[toolName] || [];
-                const color = TOOL_COLORS[toolName] || '#CCCCCC';
-
-                if (segments.length === 0) return null;
+              {toolNames.map((toolName, index) => {
+                const color = getToolColor(toolName, index);
+                const toolSegments = segmentsByTool[toolName] || [];
+                const toolPoints = pointsByTool[toolName] || [];
 
                 return (
-                  <div key={toolName} className="relative h-6">
-                    {/* Timeline background line */}
-                    <div
-                      className="absolute top-1/2 left-0 h-1 transform -translate-y-1/2 rounded-full"
-                      style={{
-                        width: `${videoDuration * pixelsPerSecond}px`,
-                        backgroundColor: '#E5E7EB'
-                      }}
-                    ></div>
+                  <div key={toolName} className="relative h-7">
+                    <div className="absolute left-0 top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-gray-200" />
 
-                    {/* Segment bars */}
-                    {segments.map((segment, segIndex) => {
-                      const segmentWidth = Math.max((segment.end - segment.start) * pixelsPerSecond, 6);
-                      return (
-                        <div
-                          key={segIndex}
-                          onClick={() => handleTimelineClick(segment.start)}
-                          className="absolute top-1/2 transform -translate-y-1/2 cursor-pointer hover:brightness-110 transition-all duration-150 hover:z-20"
-                          style={{
-                            left: `${segment.start * pixelsPerSecond}px`,
-                            width: `${segmentWidth}px`,
-                            height: '16px',
-                            backgroundColor: color,
-                            borderRadius: '3px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-                            opacity: 0.85 + segment.avgConfidence * 0.15
-                          }}
-                          title={`${toolName}: ${formatTime(segment.start)} - ${formatTime(segment.end)} (${segment.count} detections, avg ${(segment.avgConfidence * 100).toFixed(0)}% confidence)`}
-                        />
-                      );
-                    })}
+                    {continuousMode
+                      ? toolSegments.map((segment, segmentIndex) => {
+                          const safeStart = Math.min(segment.start, duration);
+                          const safeEnd = Math.min(Math.max(segment.end, safeStart), duration);
+                          const left = clampPercent((safeStart / duration) * 100);
+                          const width = clampPercent(((safeEnd - safeStart) / duration) * 100);
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${toolName}-${segment.start}-${segmentIndex}`}
+                              onClick={() => handleTimelineClick(segment.start)}
+                              className="absolute top-1/2 h-5 min-w-2 -translate-y-1/2 cursor-pointer rounded-md opacity-90 shadow-sm transition hover:z-20 hover:opacity-100"
+                              style={{
+                                left: `${left}%`,
+                                width: `${width}%`,
+                                minWidth: '8px',
+                                backgroundColor: color,
+                              }}
+                              title={`${segment.className}: ${formatTime(segment.start)} - ${formatTime(segment.end)} (${segment.count} detections, avg ${(
+                                segment.avgConfidence * 100
+                              ).toFixed(0)}% confidence)`}
+                            />
+                          );
+                        })
+                      : toolPoints.map((point, pointIndex) => {
+                          const left = clampPercent((point.timestamp / duration) * 100);
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${toolName}-${point.timestamp}-${pointIndex}`}
+                              onClick={() => handleTimelineClick(point.timestamp)}
+                              className="absolute top-1/2 h-5 w-1.5 min-w-1.5 -translate-y-1/2 cursor-pointer rounded opacity-90 shadow-sm transition hover:z-20 hover:opacity-100"
+                              style={{
+                                left: `${left}%`,
+                                backgroundColor: color,
+                              }}
+                              title={`${point.className}: ${formatTime(point.timestamp)} (${(
+                                point.confidence * 100
+                              ).toFixed(0)}% confidence)`}
+                            />
+                          );
+                        })}
                   </div>
                 );
               })}
             </div>
 
-            {/* Time markers at bottom */}
-            <div className="relative h-6 mt-2">
-              {/* Horizontal timeline bar */}
-              <div className="absolute top-0 left-0 h-px bg-gray-300" style={{ width: `${videoDuration * pixelsPerSecond}px` }}></div>
+            <div className="relative mt-2 h-7">
+              <div className="absolute left-0 top-0 h-px w-full bg-gray-300" />
 
-              {/* Time markers */}
-              {timeMarkers.map((time) => (
-                <div
-                  key={time}
-                  className="absolute top-0"
-                  style={{ left: `${time * pixelsPerSecond}px` }}
-                >
-                  <div className="absolute top-0 left-0 w-px h-1.5 bg-gray-400"></div>
-                  <span className="absolute top-2 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
-                    {formatTime(time)}
-                  </span>
-                </div>
-              ))}
+              {timeMarkers.map((time) => {
+                const left = clampPercent((time / duration) * 100);
 
-              {/* End marker */}
-              <div
-                className="absolute top-0"
-                style={{ left: `${videoDuration * pixelsPerSecond}px` }}
-              >
-                <div className="absolute top-0 left-0 w-px h-1.5 bg-gray-400"></div>
-                <span className="absolute top-2 -translate-x-1/2 left-0 text-xs text-gray-600 whitespace-nowrap">
-                  {formatTime(videoDuration)}
-                </span>
-              </div>
+                return (
+                  <div key={time} className="absolute top-0" style={{ left: `${left}%` }}>
+                    <div className="absolute left-0 top-0 h-1.5 w-px bg-gray-400" />
+                    <span className="absolute left-0 top-2 -translate-x-1/2 whitespace-nowrap text-xs text-gray-600">
+                      {formatTime(time)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="mt-6 pt-4 border-t border-gray-200">
+      <div className="mt-6 border-t border-gray-200 pt-4">
         <p className="text-xs text-gray-500">
           Click on any bar to jump to that segment in the video. Hover for details.
         </p>
@@ -269,4 +242,3 @@ export default function ToolUsageTimeline({ detectionData, videoDuration, onSeek
     </div>
   );
 }
-
