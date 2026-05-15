@@ -1,21 +1,5 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Milling";
-  font-style: normal;
-  font-weight: 400;
-  src: url("https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Duplex1mm.woff2")
-    format("woff2");
-}
-
-@font-face {
-  font-family: "Milling";
-  font-style: normal;
-  font-weight: 700;
-  src: url("https://d2n8i6crd2t3p1.cloudfront.net/font/milling/205TF-Milling-Triplex1mm.woff2")
-    format("woff2");
-}
-
 :root {
   --background: #f4f3f3;
   --foreground: #171717;
@@ -41,8 +25,8 @@
   --color-confidence-low: #1d1c1c;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Milling", var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
   /* Zinc color palette */
   --zinc-50: #f9faf9;
@@ -72,9 +56,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Milling", var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-inter: var(--font-inter);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-inter: Arial, Helvetica, sans-serif;
 
   /* Custom colors for Tailwind */
   --color-custom-green: var(--color-green);
@@ -87,7 +71,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Milling", Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Custom scrollbar styles */

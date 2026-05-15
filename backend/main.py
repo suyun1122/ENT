@@ -9,7 +9,6 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "0")
-import json
 import tempfile
 import httpx
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
@@ -44,7 +43,7 @@ processing_status = {}
 
 class DetectionRequest(BaseModel):
     video_id: str
-    blob_url: str
+    video_url: str
     callback_url: Optional[str] = None  # URL to notify when done
 
 class DetectionResponse(BaseModel):
@@ -156,7 +155,7 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
             message="Detection already in progress"
         )
 
-    # Check if results already exist in Blob (via frontend API)
+    # Check if results already exist in the frontend detection API.
     # Only check for "completed" status - ignore "processing" to avoid circular dependency
     frontend_url = os.environ.get("FRONTEND_URL")
     if not frontend_url:
@@ -168,7 +167,7 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
                 if check_response.status_code == 200:
                     check_data = check_response.json()
                     if check_data.get("status") == "completed":
-                        print(f"[Detection] Results already exist in Blob for {video_id}")
+                        print(f"[Detection] Results already exist for {video_id}")
                         # Store in local cache too
                         processing_status[video_id] = {
                             "status": "completed",
@@ -201,7 +200,7 @@ async def detect_tools(request: DetectionRequest, background_tasks: BackgroundTa
     background_tasks.add_task(
         process_detection,
         video_id,
-        request.blob_url,
+        request.video_url,
         request.callback_url
     )
 
@@ -218,7 +217,7 @@ async def detect_tools_upload(
 ):
     """
     Direct video upload endpoint for faster processing.
-    Accepts video file directly instead of downloading from Blob.
+    Accepts a video file directly.
     Video is deleted after processing.
     """
 
@@ -234,24 +233,6 @@ async def detect_tools_upload(
             video_id=video_id,
             message="Detection already in progress"
         )
-
-    # Check if results already exist
-    frontend_url = os.environ.get("FRONTEND_URL")
-    if frontend_url:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                check_response = await client.get(f"{frontend_url}/api/detect-tools/{video_id}")
-                if check_response.status_code == 200:
-                    check_data = check_response.json()
-                    if check_data.get("status") == "completed":
-                        print(f"[Detection Upload] Results already exist for {video_id}")
-                        return DetectionResponse(
-                            status="completed",
-                            video_id=video_id,
-                            message="Detection already completed"
-                        )
-        except Exception as e:
-            print(f"[Detection Upload] Could not check existing results: {e}")
 
     temp_video_path = None
 
@@ -286,19 +267,14 @@ async def detect_tools_upload(
         # Run inference synchronously
         results_data = run_inference(temp_video_path, video_id)
 
-        # Upload results to Vercel Blob
         processing_status[video_id] = {
             "status": "processing",
             "progress": 95,
-            "stage": "uploading",
+            "stage": "finalizing",
             "current_frame": 0,
             "total_frames": 0,
             "processed_frames": 0
         }
-
-        blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN")
-        if blob_token:
-            await upload_results_to_blob(video_id, results_data, blob_token)
 
         processing_status[video_id] = {
             "status": "completed",
@@ -333,7 +309,7 @@ async def detect_tools_upload(
             os.unlink(temp_video_path)
             print(f"[Detection Upload] Cleaned up temp file")
 
-async def process_detection(video_id: str, blob_url: str, callback_url: Optional[str]):
+async def process_detection(video_id: str, video_url: str, callback_url: Optional[str]):
     """Process video detection in background"""
     temp_video_path = None
 
@@ -347,10 +323,10 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
             "processed_frames": 0
         }
 
-        # Download video from blob
-        print(f"[Detection] Downloading video from: {blob_url}")
+        # Download video from a remote URL. The local frontend uses /detect/upload instead.
+        print(f"[Detection] Downloading video from: {video_url}")
         async with httpx.AsyncClient(timeout=300.0) as client:
-            response = await client.get(blob_url)
+            response = await client.get(video_url)
             response.raise_for_status()
 
             # Save to temp file
@@ -379,16 +355,11 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
         processing_status[video_id] = {
             "status": "processing",
             "progress": 95,
-            "stage": "uploading",
+            "stage": "finalizing",
             "current_frame": total_frames,
             "total_frames": total_frames,
             "processed_frames": processed_frames
         }
-
-        # Upload results to Vercel Blob
-        blob_token = os.environ.get("BLOB_READ_WRITE_TOKEN")
-        if blob_token:
-            await upload_results_to_blob(video_id, results_data, blob_token)
 
         # Notify callback if provided
         if callback_url:
@@ -425,10 +396,14 @@ async def process_detection(video_id: str, blob_url: str, callback_url: Optional
             os.unlink(temp_video_path)
 
 def run_inference(video_path: str, video_id: str):
-    """Run YOLO inference on video with fixed frame_skip"""
+    """Run YOLO inference on sampled video frames."""
 
-    # Fixed frame_skip of 120 (~5 seconds at 24fps)
-    frame_skip = 120
+    # Analyze one frame every 24 frames. The model input resolution is 960 px.
+    frame_skip = 24
+    inference_imgsz = 960
+    conf_threshold = 0.5
+    iou_threshold = 0.45
+    tracking_method = "bytetrack.yaml"
 
     cap = cv2.VideoCapture(video_path)
 
@@ -441,10 +416,11 @@ def run_inference(video_path: str, video_id: str):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     duration = total_frames / fps if fps > 0 else 0
-    estimated_frames_to_process = total_frames // frame_skip
+    estimated_frames_to_process = max(1, (total_frames + frame_skip - 1) // frame_skip)
 
     print(f"[Inference] Video: {width}x{height}, {fps} FPS, {total_frames} frames, duration: {duration:.1f}s")
     print(f"[Inference] Frame skip: {frame_skip} (will process ~{estimated_frames_to_process} frames)")
+    print(f"[Inference] Input size: {inference_imgsz}, tracking: Ultralytics ByteTrack")
 
     # Update status with total frames info
     processing_status[video_id] = {
@@ -467,12 +443,21 @@ def run_inference(video_path: str, video_id: str):
             "duration": duration
         },
         "frame_skip": frame_skip,
+        "inference_imgsz": inference_imgsz,
+        "tracking": {
+            "enabled": True,
+            "method": "Ultralytics ByteTrack",
+            "track_id_field": "track_id"
+        },
         "classes": {},
         "detections": []
     }
 
     frame_idx = 0
     processed_frames = 0
+    tracking_available = True
+    tracking_used = False
+    track_ids_found = 0
 
     try:
         while True:
@@ -483,13 +468,38 @@ def run_inference(video_path: str, video_id: str):
             if frame_idx % frame_skip == 0:
                 timestamp = frame_idx / fps if fps > 0 else 0
 
-                # Run inference
-                results = model.predict(
-                    frame,
-                    conf=0.5,
-                    iou=0.45,
-                    verbose=False
-                )
+                # Run tracked inference when available. If tracking is unavailable
+                # in the local Ultralytics install, fall back to plain detection.
+                if tracking_available:
+                    try:
+                        results = model.track(
+                            frame,
+                            conf=conf_threshold,
+                            iou=iou_threshold,
+                            imgsz=inference_imgsz,
+                            persist=processed_frames > 0,
+                            tracker=tracking_method,
+                            verbose=False
+                        )
+                        tracking_used = True
+                    except Exception as track_error:
+                        tracking_available = False
+                        print(f"[Inference] Tracking unavailable, falling back to predict(): {track_error}")
+                        results = model.predict(
+                            frame,
+                            conf=conf_threshold,
+                            iou=iou_threshold,
+                            imgsz=inference_imgsz,
+                            verbose=False
+                        )
+                else:
+                    results = model.predict(
+                        frame,
+                        conf=conf_threshold,
+                        iou=iou_threshold,
+                        imgsz=inference_imgsz,
+                        verbose=False
+                    )
 
                 frame_detections = {
                     "frame": frame_idx,
@@ -506,11 +516,23 @@ def run_inference(video_path: str, video_id: str):
                         x1, y1, x2, y2 = box.xyxy[0].tolist()
 
                         class_name = model.names[cls_id]
+                        track_id = None
+
+                        try:
+                            box_track_id = getattr(box, "id", None)
+                            if box_track_id is not None:
+                                if hasattr(box_track_id, "item"):
+                                    track_id = int(box_track_id.item())
+                                else:
+                                    track_id = int(box_track_id[0])
+                                track_ids_found += 1
+                        except Exception:
+                            track_id = None
 
                         if cls_id not in results_data["classes"]:
                             results_data["classes"][cls_id] = class_name
 
-                        frame_detections["tools"].append({
+                        tool_detection = {
                             "class_id": cls_id,
                             "class_name": class_name,
                             "confidence": round(conf, 4),
@@ -522,7 +544,12 @@ def run_inference(video_path: str, video_id: str):
                                 "width": round(x2 - x1, 2),
                                 "height": round(y2 - y1, 2)
                             }
-                        })
+                        }
+
+                        if track_id is not None:
+                            tool_detection["track_id"] = track_id
+
+                        frame_detections["tools"].append(tool_detection)
 
                 if len(frame_detections["tools"]) > 0:
                     results_data["detections"].append(frame_detections)
@@ -555,33 +582,12 @@ def run_inference(video_path: str, video_id: str):
         "frames_with_detections": len(results_data["detections"]),
         "total_tool_detections": sum(len(d["tools"]) for d in results_data["detections"])
     }
+    results_data["tracking"]["enabled"] = tracking_used and tracking_available
+    results_data["tracking"]["track_ids_found"] = track_ids_found
 
     print(f"[Inference] Complete: {results_data['summary']}")
 
     return results_data
-
-async def upload_results_to_blob(video_id: str, results_data: dict, blob_token: str):
-    """Upload detection results via Frontend API (which uses Vercel Blob SDK)"""
-
-    # Frontend API endpoint - REQUIRED environment variable
-    frontend_url = os.environ.get("FRONTEND_URL")
-    if not frontend_url:
-        print(f"[Blob] ERROR: FRONTEND_URL not set, cannot upload results for {video_id}")
-        return
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.put(
-            f"{frontend_url}/api/detect-tools/{video_id}",
-            content=json.dumps(results_data),
-            headers={
-                "Content-Type": "application/json",
-            }
-        )
-
-        if response.status_code in [200, 201]:
-            print(f"[Blob] Uploaded results for {video_id}")
-        else:
-            print(f"[Blob] Upload failed: {response.status_code} - {response.text}")
 
 if __name__ == "__main__":
     import uvicorn

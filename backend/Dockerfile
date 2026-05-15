@@ -1,4 +1,4 @@
-FROM ultralytics/ultralytics:latest-cpu
+FROM ultralytics/ultralytics:latest
 
 WORKDIR /app
 
@@ -10,5 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY best.pt .
 
-# Run the application - Railway sets PORT env var
+# Run the application. PORT can be overridden by the host environment.
 CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}

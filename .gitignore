@@ -13,10 +13,6 @@
 /cv_model/cv_pipeline.py
 /cv_model/test
 
-/rtsp-stream-worker/temp
-/rtsp-stream-worker/mediamtx
-/rtsp-stream-worker/preset
-
 __pycache__*
 *.pyc
 
@@ -51,7 +47,6 @@ __pycache__*
 /frontend/data/
 /frontend/public/uploads/
 /frontend/public/detections/
-/frontend/public/analysis/
 /backend/best.previous-*.pt
 
 # Internal docs - not needed for project

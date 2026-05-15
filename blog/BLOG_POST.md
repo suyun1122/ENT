@@ -25,7 +25,7 @@ Surgical and training videos can be long. Reviewing them manually to find when i
 1. A user uploads a local video in the web app.
 2. The frontend saves the video locally.
 3. The frontend sends the video to the FastAPI backend.
-4. The backend loads `backend/best.pt` and runs YOLO inference.
+4. The backend loads `backend/best.pt` and runs YOLO inference every 24 frames with `imgsz=960`.
 5. Detection results are saved as JSON.
 6. The frontend displays:
    - video playback
@@ -45,8 +45,9 @@ Each detection record contains:
 - class name
 - confidence
 - bounding box coordinates
+- optional `track_id` from ByteTrack tracking
 
-The frontend uses this data directly. It does not change the original YOLO output.
+The frontend uses this data directly for statistics and timeline output. For the video overlay, it interpolates boxes between sampled frames to make the demo easier to watch without rewriting the saved detection JSON.
 
 ## Motion Analysis
 

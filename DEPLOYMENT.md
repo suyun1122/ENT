@@ -19,6 +19,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+The Python backend uses GPU acceleration when the installed PyTorch/CUDA environment supports it. The Dockerfile uses the default Ultralytics image rather than the CPU-only image.
+
 The backend loads:
 
 ```text
@@ -40,6 +42,16 @@ scalpel
 shear
 tweezer
 ```
+
+Inference sampling:
+
+```text
+frame_skip = 24
+imgsz = 960
+tracking = Ultralytics ByteTrack
+```
+
+At 30 FPS, the backend analyzes about 1.25 sampled frames per second. The backend attempts ByteTrack tracking and writes `track_id` when tracking IDs are available. Lower `frame_skip` values improve temporal coverage but increase processing time.
 
 Default backend URL:
 
@@ -75,7 +87,6 @@ The local app creates these folders:
 frontend/data/
 frontend/public/uploads/
 frontend/public/detections/
-frontend/public/analysis/
 ```
 
 These folders are ignored by git because they contain local videos and generated detection results.

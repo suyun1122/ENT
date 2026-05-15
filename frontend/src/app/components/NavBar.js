@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -21,9 +20,7 @@ export default function NavBar() {
     <nav style={{ backgroundColor: "var(--zinc-100)" }}>
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
-          {/* Left side - Title and Badge */}
           <div className="flex items-center space-x-4">
-            {/* Title - Clickable Home */}
             <Link
               href="/clips"
               onClick={handleHomeClick}
@@ -33,20 +30,13 @@ export default function NavBar() {
               Surgical Video Intelligence
             </Link>
 
-            {/* Sample App Badge */}
             <span className="sample-badge hidden sm:inline-block">
-              SAMPLE APP
+              LOCAL YOLO
             </span>
           </div>
 
-          {/* Right side - Twelve Labs Logo */}
-          <div className="relative h-30 w-30 flex-shrink-0">
-            <Image
-              src="/twelvelabs.png"
-              alt="Twelve Labs Logo"
-              fill
-              className="object-contain"
-            />
+          <div className="hidden text-right text-xs uppercase tracking-wide text-gray-500 sm:block">
+            Surgical Instrument Detection
           </div>
         </div>
       </div>

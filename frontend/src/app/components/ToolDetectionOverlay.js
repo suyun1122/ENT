@@ -34,8 +34,10 @@ function getAdaptiveDisplayWindow(detectionData, sortedDetections) {
   return Math.max(0.75, sampleInterval / 2 + 0.35);
 }
 
-function findNearestDetection(detections, currentTime, maxDiffSec) {
-  if (!detections.length) return null;
+function findDetectionWindow(detections, currentTime, maxDiffSec) {
+  if (!detections.length) {
+    return { previous: null, next: null, nearest: null };
+  }
 
   let left = 0;
   let right = detections.length - 1;
@@ -49,7 +51,9 @@ function findNearestDetection(detections, currentTime, maxDiffSec) {
     }
   }
 
-  const candidates = [detections[left], detections[left - 1]].filter(Boolean);
+  const next = detections[left] || null;
+  const previous = detections[left - 1] || (next?.timestamp <= currentTime ? next : null);
+  const candidates = [next, previous].filter(Boolean);
   let nearest = null;
   let nearestDiff = Infinity;
 
@@ -61,7 +65,163 @@ function findNearestDetection(detections, currentTime, maxDiffSec) {
     }
   }
 
-  return nearestDiff <= maxDiffSec ? nearest : null;
+  return {
+    previous,
+    next,
+    nearest: nearestDiff <= maxDiffSec ? nearest : null
+  };
+}
+
+function getToolTrackKey(tool) {
+  if (tool?.track_id !== undefined && tool?.track_id !== null) {
+    return `track:${tool.track_id}`;
+  }
+
+  if (tool?.object_id) {
+    return `object:${tool.object_id}`;
+  }
+
+  return null;
+}
+
+function getToolClassKey(tool) {
+  return `${tool?.class_id ?? ''}:${tool?.class_name ?? ''}`;
+}
+
+function getToolCenter(tool) {
+  const bbox = tool?.bbox || {};
+  const x1 = numeric(bbox.x1, 0);
+  const y1 = numeric(bbox.y1, 0);
+  const x2 = numeric(bbox.x2, x1 + numeric(bbox.width, 0));
+  const y2 = numeric(bbox.y2, y1 + numeric(bbox.height, 0));
+
+  return {
+    x: (x1 + x2) / 2,
+    y: (y1 + y2) / 2
+  };
+}
+
+function centerDistanceSquared(a, b) {
+  const centerA = getToolCenter(a);
+  const centerB = getToolCenter(b);
+  const dx = centerA.x - centerB.x;
+  const dy = centerA.y - centerB.y;
+  return dx * dx + dy * dy;
+}
+
+function findMatchingTool(sourceTool, candidateTools, usedIndexes) {
+  const sourceTrackKey = getToolTrackKey(sourceTool);
+
+  if (sourceTrackKey) {
+    const trackedIndex = candidateTools.findIndex((candidate, index) => (
+      !usedIndexes.has(index) && getToolTrackKey(candidate) === sourceTrackKey
+    ));
+
+    if (trackedIndex >= 0) return trackedIndex;
+  }
+
+  const sourceClassKey = getToolClassKey(sourceTool);
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+
+  candidateTools.forEach((candidate, index) => {
+    if (usedIndexes.has(index) || getToolClassKey(candidate) !== sourceClassKey) return;
+
+    const distance = centerDistanceSquared(sourceTool, candidate);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function interpolateValue(start, end, ratio) {
+  return start + (end - start) * ratio;
+}
+
+function interpolateTool(previousTool, nextTool, ratio) {
+  const prevBox = previousTool?.bbox || {};
+  const nextBox = nextTool?.bbox || {};
+  const x1 = interpolateValue(numeric(prevBox.x1, 0), numeric(nextBox.x1, 0), ratio);
+  const y1 = interpolateValue(numeric(prevBox.y1, 0), numeric(nextBox.y1, 0), ratio);
+  const x2 = interpolateValue(
+    numeric(prevBox.x2, numeric(prevBox.x1, 0) + numeric(prevBox.width, 0)),
+    numeric(nextBox.x2, numeric(nextBox.x1, 0) + numeric(nextBox.width, 0)),
+    ratio
+  );
+  const y2 = interpolateValue(
+    numeric(prevBox.y2, numeric(prevBox.y1, 0) + numeric(prevBox.height, 0)),
+    numeric(nextBox.y2, numeric(nextBox.y1, 0) + numeric(nextBox.height, 0)),
+    ratio
+  );
+  const confidence = interpolateValue(
+    numeric(previousTool?.confidence, 0),
+    numeric(nextTool?.confidence, 0),
+    ratio
+  );
+
+  return {
+    ...previousTool,
+    ...nextTool,
+    confidence,
+    bbox: {
+      x1,
+      y1,
+      x2,
+      y2,
+      width: x2 - x1,
+      height: y2 - y1
+    }
+  };
+}
+
+function buildStableDetections(detections, currentTime, maxDiffSec) {
+  const { previous, next, nearest } = findDetectionWindow(detections, currentTime, maxDiffSec);
+  if (!nearest) return [];
+
+  const previousTools = Array.isArray(previous?.tools) ? previous.tools : [];
+  const nextTools = Array.isArray(next?.tools) ? next.tools : [];
+  const canInterpolate = previous
+    && next
+    && previous !== next
+    && previous.timestamp <= currentTime
+    && next.timestamp >= currentTime
+    && currentTime - previous.timestamp <= maxDiffSec
+    && next.timestamp - currentTime <= maxDiffSec;
+
+  if (!canInterpolate || previousTools.length === 0 || nextTools.length === 0) {
+    return Array.isArray(nearest.tools) ? nearest.tools : [];
+  }
+
+  const timeRange = Math.max(0.001, next.timestamp - previous.timestamp);
+  const ratio = Math.min(1, Math.max(0, (currentTime - previous.timestamp) / timeRange));
+  const usedNextIndexes = new Set();
+  const stableTools = [];
+
+  previousTools.forEach((previousTool) => {
+    const matchIndex = findMatchingTool(previousTool, nextTools, usedNextIndexes);
+
+    if (matchIndex >= 0) {
+      usedNextIndexes.add(matchIndex);
+      stableTools.push(interpolateTool(previousTool, nextTools[matchIndex], ratio));
+      return;
+    }
+
+    if (currentTime - previous.timestamp <= maxDiffSec) {
+      stableTools.push(previousTool);
+    }
+  });
+
+  nextTools.forEach((nextTool, index) => {
+    if (usedNextIndexes.has(index)) return;
+    if (next.timestamp - currentTime <= maxDiffSec && ratio >= 0.5) {
+      stableTools.push(nextTool);
+    }
+  });
+
+  return stableTools;
 }
 
 /**
@@ -161,6 +321,7 @@ export default function ToolDetectionOverlay({
   // Update detections based on current video time
   useEffect(() => {
     let animationFrame = null;
+    let playbackFrame = null;
     let activeVideo = null;
 
     const updateDetections = () => {
@@ -168,13 +329,39 @@ export default function ToolDetectionOverlay({
       if (!video) return;
 
       const currentTime = video.currentTime;
-      const nearestDetection = findNearestDetection(
+      const stableDetections = buildStableDetections(
         sortedDetections,
         currentTime,
         displayWindowSec
       );
 
-      setCurrentDetections(Array.isArray(nearestDetection?.tools) ? nearestDetection.tools : []);
+      setCurrentDetections(stableDetections);
+    };
+
+    const stopPlaybackLoop = () => {
+      if (playbackFrame) {
+        cancelAnimationFrame(playbackFrame);
+        playbackFrame = null;
+      }
+    };
+
+    const runPlaybackLoop = () => {
+      updateDetections();
+
+      const video = videoRef.current;
+      if (video && !video.paused && !video.ended) {
+        playbackFrame = requestAnimationFrame(runPlaybackLoop);
+      }
+    };
+
+    const startPlaybackLoop = () => {
+      stopPlaybackLoop();
+      runPlaybackLoop();
+    };
+
+    const updateOnce = () => {
+      stopPlaybackLoop();
+      updateDetections();
     };
 
     const setupListeners = () => {
@@ -188,8 +375,9 @@ export default function ToolDetectionOverlay({
       activeVideo = video;
       video.addEventListener('timeupdate', updateDetections);
       video.addEventListener('seeked', updateDetections);
-      video.addEventListener('play', updateDetections);
-      video.addEventListener('pause', updateDetections);
+      video.addEventListener('play', startPlaybackLoop);
+      video.addEventListener('pause', updateOnce);
+      video.addEventListener('ended', updateOnce);
       updateDetections();
     };
 
@@ -202,11 +390,13 @@ export default function ToolDetectionOverlay({
 
     return () => {
       if (animationFrame) cancelAnimationFrame(animationFrame);
+      stopPlaybackLoop();
       if (activeVideo) {
         activeVideo.removeEventListener('timeupdate', updateDetections);
         activeVideo.removeEventListener('seeked', updateDetections);
-        activeVideo.removeEventListener('play', updateDetections);
-        activeVideo.removeEventListener('pause', updateDetections);
+        activeVideo.removeEventListener('play', startPlaybackLoop);
+        activeVideo.removeEventListener('pause', updateOnce);
+        activeVideo.removeEventListener('ended', updateOnce);
       }
     };
   }, [videoRef, sortedDetections, displayWindowSec]);

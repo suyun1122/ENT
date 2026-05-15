@@ -31,6 +31,25 @@ https://huggingface.co/joonhaim/surgical-tool-recognition-yolo26s
 | 3 | shear |
 | 4 | tweezer |
 
+## Video Sampling Strategy
+
+The backend does not run YOLO on every video frame. It samples the video and runs inference every 24 frames:
+
+```text
+frame_skip = 24
+imgsz = 960
+```
+
+Approximate sampling interval:
+
+| Video FPS | Inference Frequency |
+| --- | --- |
+| 24 FPS | Every 1.0 second |
+| 30 FPS | Every 0.8 second |
+| 60 FPS | Every 0.4 second |
+
+The backend uses Ultralytics tracking with ByteTrack when available. The JSON stores `track_id` for tracked detections, and the frontend interpolates boxes between sampled frames so the overlay is more stable and less flickery during playback. Reducing `frame_skip` improves temporal coverage but increases inference time.
+
 如果重新替换 `backend/best.pt`，需要重启后端服务。已经生成的旧检测 JSON 不会自动更新，需要重新上传视频或重新运行检测。
 
 ## What This Demo Does
@@ -89,6 +108,8 @@ Backend:
 - Ultralytics YOLO
 - OpenCV
 - Python
+
+Ultralytics will use a CUDA GPU when the local PyTorch environment supports it. If CUDA is not available, inference falls back to CPU.
 
 ## Local Setup
 
@@ -157,6 +178,13 @@ The backend produces JSON similar to:
     "fps": 30,
     "duration": 80.8
   },
+  "frame_skip": 24,
+  "inference_imgsz": 960,
+  "tracking": {
+    "enabled": true,
+    "method": "Ultralytics ByteTrack",
+    "track_id_field": "track_id"
+  },
   "detections": [
     {
       "frame": 360,
@@ -165,6 +193,7 @@ The backend produces JSON similar to:
         {
           "class_id": 1,
           "class_name": "needle_holder",
+          "track_id": 7,
           "confidence": 0.72,
           "bbox": {
             "x1": 100,
@@ -188,7 +217,6 @@ The following files are local runtime data and are ignored by git:
 - `frontend/data/`
 - `frontend/public/uploads/`
 - `frontend/public/detections/`
-- `frontend/public/analysis/`
 - `backend/best.previous-*.pt`
 
 The active model file `backend/best.pt` is kept in the repository because it is required to run the demo.

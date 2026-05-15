@@ -32,6 +32,17 @@ The loaded model classes are:
 4: tweezer
 ```
 
+## Video Inference Sampling
+
+The current backend samples videos every 24 frames and uses a 960 px inference size:
+
+```text
+frame_skip = 24
+imgsz = 960
+```
+
+At 30 FPS, this means approximately 1.25 YOLO inferences per second. The backend attempts Ultralytics ByteTrack tracking and records `track_id` in detection results when tracking is available. These settings live in `backend/main.py`.
+
 ## Local Model Check
 
 From the repository root:
